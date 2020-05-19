@@ -37,6 +37,11 @@ const (
 	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\n\r\n"
 )
 
+// utility functions
+
+// checkFor200 takes a buffer and sees if it was a successful
+// connect reply.  Returns the remainder (if any) and ok set to
+// true on success or '', false on failure
 func checkFor200(n int, buf []byte) ([]byte, bool) {
 	a := strings.Split(string(buf[:n]), httpNewLine)
 	if len(a) >= 1 && a[0][:len(headerFor200)] == headerFor200 {
@@ -45,51 +50,37 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 	return []byte(""), false
 }
 
+// getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr) (string, string) {
 	return "localhost", "3128"
 }
 
+// getRealAddr will look up the true hostname
+// for the CONNECT call - maybe via zone xfer?
 func getRealAddr(na net.Addr) (string, string) {
 	return "ns.lane-jayasinha.com", "8022"
 }
 
-func (c *connection) inWriteLoop() {
-	//  reads stuff from channel and writes to socket till fd is dead
-	defer c.doneWithConn()
-	for {
-		select {
-		case buffer, ok := <-c.inBound:
-			if !ok {
-				log.Println("CLOSING: channel closed", c.inConn)
-				return
-			}
-			total := len(buffer)
-			pos := 0
-			for pos < total {
-				len, err := c.inConn.Write(buffer[pos:total])
-				if err != nil {
-					count.Incr("conn-in-writes-err")
-					log.Println("ERROR: write errored", c.inConn, err)
-					return
-				}
-				pos += len
-			}
-			count.IncrDelta("conn-in-write-len", int64(total))
-			count.Incr("conn-in-writes-ok")
-			//log.Printf("OK: sent in data %d {%s} %d\n", total, string(buffer),
-			//	c.state)
-		}
-	}
+// initConn takes an incoming net.Conn and
+// returns an initialized connection
+func initConn(in net.Conn) *connection {
+	c := connection{inConn: in}
+	c.outBound = make(chan []byte, 10000)
+	c.inBound = make(chan []byte, 10000)
+	c.lock = sync.RWMutex{}
+	c.state = waitingFor200
+	return &c
 }
 
+// doneWithConn closes everything safely when done
+// can be called multiple times
 func (c *connection) doneWithConn() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state == closed {
-		fmt.Println("Skipping close, already closed")
+		count.Incr("connection-pairing-dup")
 		return
 	}
-	fmt.Println("Closing from state", c.state)
 	count.Incr("connection-pairing-closed")
 	count.Decr("connection-pairing")
 	c.state = closed
@@ -99,6 +90,39 @@ func (c *connection) doneWithConn() {
 	close(c.inBound)
 }
 
+// next four goroutines per connection
+
+// inWriteLoop writes date from the far end
+// back to the caller
+func (c *connection) inWriteLoop() {
+	//  reads stuff from channel and writes to socket till fd is dead
+	defer c.doneWithConn()
+	for {
+		select {
+		case buffer, ok := <-c.inBound:
+			if !ok {
+				count.Incr("write-in-zero")
+				return
+			}
+			total := len(buffer)
+			pos := 0
+			for pos < total {
+				len, err := c.inConn.Write(buffer[pos:total])
+				if err != nil {
+					count.Incr("write-in-err")
+					return
+				}
+				pos += len
+			}
+			count.IncrDelta("write-in-len", int64(total))
+			count.Incr("write-in-ok")
+			//log.Printf("OK: sent in data %d {%s} %d\n", total, string(buffer),
+			//	c.state)
+		}
+	}
+}
+
+// outWriteLoop reads from the channel and writes to the far end
 func (c *connection) outWriteLoop() {
 	//  reads stuff from channel and writes to out socket
 	defer c.doneWithConn()
@@ -106,7 +130,6 @@ func (c *connection) outWriteLoop() {
 		select {
 		case buffer, ok := <-c.outBound:
 			if !ok {
-				fmt.Println("CLOSING: outBound channel closed")
 				return
 			}
 			total := len(buffer)
@@ -116,25 +139,25 @@ func (c *connection) outWriteLoop() {
 			for pos < total {
 				n, err := c.outConn.Write(buffer[pos:total])
 				if n == 0 {
-					count.Incr("conn-out-writes-zero")
-					log.Println("ZERO-WRITE: write zero bytes", c.outConn, err)
+					count.Incr("write-out-zero")
 					return
 				}
 				if err != nil {
-					count.Incr("conn-out-writes-err")
-					log.Println("ERROR: write errored", c.outConn, err)
+					count.Incr("write-out-err")
 					return
 				}
 				pos += n
 			}
-			count.IncrDelta("conn-out-write-len", int64(total))
-			count.Incr("conn-out-writes-ok")
+			count.IncrDelta("write-out-len", int64(total))
+			count.Incr("write-out-ok")
 			//log.Printf("OK: sent out data %d {%s} state %d\n", total, string(buffer),
 			//	c.state)
 		}
 	}
 }
 
+// inReadLoop (for inboudn) reads from the far end and sticks into a
+// channel
 func (c *connection) inReadLoop() {
 
 	//  reads stuff from out and writes to channel till fd is dead
@@ -144,12 +167,10 @@ func (c *connection) inReadLoop() {
 		n, err := c.outConn.Read(buffer)
 		if n == 0 {
 			count.Incr("read-in-closed")
-			log.Println("CLOSED: read EOF", c.inConn, err)
 			return
 		}
 		if err != nil {
 			count.Incr("read-in-err")
-			log.Println("ERROR: read errored", c.inConn, err)
 			return
 		}
 		//fmt.Printf("Got data in %d {%s}\n", n, string(
@@ -160,19 +181,25 @@ func (c *connection) inReadLoop() {
 			// first line
 			newBuf, ok2 := checkFor200(n, buffer)
 			if ok2 {
+				count.Incr("read-in-header")
 				c.state = up
 				c.lock.Unlock()
 				c.inBound <- newBuf
 				continue
 			}
+			count.Incr("read-in-bad-header")
 			c.lock.Unlock()
 			return
 		}
 		c.lock.Unlock()
+		count.Incr("read-in-ok")
+		count.IncrDelta("read-in-len", int64(n))
 		c.inBound <- buffer[0:n] //  to do non-blocking?
 	}
 }
 
+// outReadLoop reads from the caller and writes to channel
+// for outbound data flow
 func (c *connection) outReadLoop() {
 	//  reads stuff from in and writes to channel till fd is dead
 	defer c.doneWithConn()
@@ -181,22 +208,22 @@ func (c *connection) outReadLoop() {
 		n, err := c.inConn.Read(buffer)
 		if n == 0 {
 			count.Incr("read-out-closed")
-			log.Println("CLOSED: read EOF", c.inConn, err)
 			return
 		}
 		if err != nil {
 			count.Incr("read-out-read-err")
-			log.Println("ERROR: read errored", c.outConn, err)
 			return
 		}
 		// fmt.Printf("Got data out %d {%s}\n", n, string(buffer[0:n]))
+		count.Incr("read-out-ok")
+		count.Incr("read-out-len")
 		c.outBound <- buffer[0:n] // to do non-blocking?
 	}
 }
 
-// first a few utilities
-func (c *connection) handleOneConn() {
-	ra := c.inConn.RemoteAddr()
+// run starts up the work on a new connection
+func (c *connection) run() {
+	ra := c.inConn.LocalAddr()
 	h, p := getProxyAddr(ra)
 	rH, rP := getRealAddr(ra)
 	var err error
@@ -224,13 +251,4 @@ func (c *connection) handleOneConn() {
 	go c.outReadLoop()
 	go c.inWriteLoop()
 	go c.outWriteLoop()
-}
-
-func initConn(in net.Conn) *connection {
-	c := connection{inConn: in}
-	c.outBound = make(chan []byte, 10000)
-	c.inBound = make(chan []byte, 10000)
-	c.lock = sync.RWMutex{}
-	c.state = waitingFor200
-	return &c
 }

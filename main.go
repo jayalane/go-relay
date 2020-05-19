@@ -39,7 +39,7 @@ func handleConn() {
 		select {
 		case c := <-theCtx.connChan:
 			count.Incr("conn-chan-remove")
-			c.handleOneConn() // have to think the data flow here
+			c.run() // have to think the data flow here
 		case <-time.After(60 * time.Second):
 			count.Incr("conn-chan-idle")
 		}
