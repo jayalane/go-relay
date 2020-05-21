@@ -52,13 +52,22 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 
 // getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr) (string, string) {
-	return "localhost", "3128"
+	return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 }
 
 // getRealAddr will look up the true hostname
 // for the CONNECT call - maybe via zone xfer?
 func getRealAddr(na net.Addr) (string, string) {
-	return "ns.lane-jayasinha.com", "8022"
+	s := strings.Split(na.String(), ":")
+	port := s[len(s)-1]
+	ip := strings.Join(s[0:len(s)-1], ":")
+	if theConfig["destHostMethod"].StrVal == "incoming" {
+		return ip, port
+	}
+	if theConfig["destHostMethod"].StrVal == "hardwired" {
+		return theConfig["destHostHardwired"].StrVal, port
+	}
+	return "ns.lane-jayasinha.com", "22"
 }
 
 // initConn takes an incoming net.Conn and

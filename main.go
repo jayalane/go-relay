@@ -17,8 +17,10 @@ import (
 var theConfig config.Config
 var defaultConfig = `#
 ports = 6000
-numConnectionHandlers = 100
-numDataHandlers = 1000
+squidHost = localhost
+squidPort = 3128
+destHostMethod = incoming
+numConnectionHandlers = 10000
 profListen = localhost:6060
 # comments
 `
@@ -92,6 +94,7 @@ func main() {
 			count.Incr("listen-error")
 			log.Println("ERROR: can't listen to", p, err) // handle error
 		} else {
+			log.Println("OK: Listening to", p)
 			go func() {
 				for {
 					conn, err := ln.Accept()
