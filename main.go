@@ -16,10 +16,10 @@ import (
 
 var theConfig config.Config
 var defaultConfig = `#
-ports = 6000
+ports = 5999
 squidHost = localhost
 squidPort = 3128
-destHostMethod = incoming
+destHostMethod = none
 numConnectionHandlers = 10000
 profListen = localhost:6060
 # comments
