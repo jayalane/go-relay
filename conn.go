@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	count "github.com/jayalane/go-counter"
+	"github.com/paultag/sniff/parser"
 	"log"
 	"net"
 	"strings"
@@ -51,15 +52,18 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 }
 
 // getProxyAddr will return the squid endpoint
-func getProxyAddr(na net.Addr) (string, string) {
+func getProxyAddr(na net.Addr, sni string) (string, string) {
 	return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 }
 
 // getRealAddr will look up the true hostname
 // for the CONNECT call - maybe via zone xfer?
-func getRealAddr(na net.Addr) (string, string) {
+func getRealAddr(na net.Addr, sni string) (string, string) {
 	s := strings.Split(na.String(), ":")
 	port := s[len(s)-1]
+	if sni != "" {
+		return sni, port
+	}
 	ip := strings.Join(s[0:len(s)-1], ":")
 	if theConfig["destHostMethod"].StrVal == "incoming" {
 		return ip, port
@@ -232,10 +236,24 @@ func (c *connection) outReadLoop() {
 
 // run starts up the work on a new connection
 func (c *connection) run() {
+	// use local address
 	ra := c.inConn.LocalAddr()
-	h, p := getProxyAddr(ra)
-	rH, rP := getRealAddr(ra)
-	var err error
+	firstRead := make([]byte, 1024)
+	n, err := c.inConn.Read(firstRead)
+	// log.Println("Got first read", string(firstRead[:n]))
+	if err != nil {
+		log.Println("ERROR: First read on inbound got error", err)
+		count.Incr("read-in-err")
+		c.inConn.Close()
+		return
+	}
+	sni, err := parser.GetHostname(firstRead[:n])
+	if err != nil {
+		sni = ""
+	}
+	// log.Println("Got an SNI", sni)
+	h, p := getProxyAddr(ra, sni)
+	rH, rP := getRealAddr(ra, sni)
 	c.outConn, err = net.DialTimeout("tcp", h+":"+p, 15*time.Second)
 	if err != nil {
 		log.Println("ERROR: connect out got err", err)
@@ -243,7 +261,8 @@ func (c *connection) run() {
 			count.Incr("connect-out-timeout")
 		}
 		count.Incr("connect-out-error")
-		return // TODO
+		c.inConn.Close()
+		return
 	}
 	connS := fmt.Sprintf(
 		requestForConnect,
@@ -252,7 +271,11 @@ func (c *connection) run() {
 		rH,
 	)
 	c.outConn.Write([]byte(connS))
-	log.Println("Handling a connection", c.inConn.RemoteAddr())
+	log.Println("Handling a connection", c.inConn.RemoteAddr(), connS)
+
+	// and stage the fristRead data
+	c.outBound <- firstRead[:n]
+
 	// now a goroutine per connection (in and out)
 	// data flow thru a per connection
 	count.Incr("connection-pairing")
@@ -260,4 +283,5 @@ func (c *connection) run() {
 	go c.outReadLoop()
 	go c.inWriteLoop()
 	go c.outWriteLoop()
+
 }
