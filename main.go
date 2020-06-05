@@ -10,6 +10,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,7 @@ import (
 var theConfig config.Config
 var defaultConfig = `#
 ports = 5999
+isNAT = true
 squidHost = localhost
 squidPort = 3128
 destHostMethod = none
@@ -89,25 +91,32 @@ func main() {
 	}()
 
 	for _, p := range strings.Split(theConfig["ports"].StrVal, ",") {
-		ln, err := net.Listen("tcp", ":"+p)
+		port, err := strconv.Atoi(p)
 		if err != nil {
 			count.Incr("listen-error")
 			log.Println("ERROR: can't listen to", p, err) // handle error
-		} else {
-			log.Println("OK: Listening to", p)
-			go func() {
-				for {
-					conn, err := ln.Accept()
-					if err != nil {
-						count.Incr("accept-error")
-						log.Println("ERROR: accept failed", ln, err)
-					}
-					count.Incr("accept-ok")
-					count.Incr("conn-chan-add")
-					theCtx.connChan <- initConn(conn) // todo timeout
-				}
-			}()
+			continue
 		}
+		tcp := net.TCPAddr{net.IPv4(0, 0, 0, 0), port, ""}
+		ln, err := net.ListenTCP("tcp", &tcp)
+		if err != nil {
+			count.Incr("listen-error")
+			log.Println("ERROR: can't listen to", p, err) // handle error
+			continue
+		}
+		log.Println("OK: Listening to", p)
+		go func() {
+			for {
+				conn, err := ln.AcceptTCP()
+				if err != nil {
+					count.Incr("accept-error")
+					log.Println("ERROR: accept failed", ln, err)
+				}
+				count.Incr("accept-ok")
+				count.Incr("conn-chan-add")
+				theCtx.connChan <- initConn(*conn) // todo timeout
+			}
+		}()
 	}
 	// waiting till done - just wait forever I think
 	<-theCtx.done

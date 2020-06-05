@@ -25,7 +25,7 @@ const (
 type connection struct {
 	lock     sync.RWMutex
 	state    connState
-	inConn   net.Conn
+	inConn   net.TCPConn
 	outConn  net.Conn
 	outBound chan []byte
 	inBound  chan []byte
@@ -76,7 +76,7 @@ func getRealAddr(na net.Addr, sni string) (string, string) {
 
 // initConn takes an incoming net.Conn and
 // returns an initialized connection
-func initConn(in net.Conn) *connection {
+func initConn(in net.TCPConn) *connection {
 	c := connection{inConn: in}
 	c.outBound = make(chan []byte, 10000)
 	c.inBound = make(chan []byte, 10000)
@@ -236,6 +236,7 @@ func (c *connection) outReadLoop() {
 
 // run starts up the work on a new connection
 func (c *connection) run() {
+
 	// use local address
 	ra := c.inConn.LocalAddr()
 	firstRead := make([]byte, 1024)
@@ -251,6 +252,16 @@ func (c *connection) run() {
 	if err != nil {
 		sni = ""
 	}
+	// first get NAT address
+	if sni == "" && theConfig["isNAT"].BoolVal {
+		_, host, newConn, err := getOriginalDst(&c.inConn)
+		if err == nil {
+			log.Println("NAT Addr:", host)
+			sni = host
+			c.inConn = *newConn
+		}
+	}
+
 	// log.Println("Got an SNI", sni)
 	h, p := getProxyAddr(ra, sni)
 	rH, rP := getRealAddr(ra, sni)
