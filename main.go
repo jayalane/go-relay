@@ -22,6 +22,7 @@ isNAT = true
 squidHost = localhost
 squidPort = 3128
 destHostMethod = none
+destPortOverride = 
 numConnectionHandlers = 10000
 profListen = localhost:6060
 # comments

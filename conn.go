@@ -51,6 +51,14 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 	return []byte(""), false
 }
 
+func hostPart(ad string) string {
+	s := strings.Split(ad, ":")
+	if len(s) < 2 {
+		return ""
+	}
+	return strings.Join(s[:len(s)-1], "")
+}
+
 // getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr, sni string) (string, string) {
 	return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
@@ -61,6 +69,9 @@ func getProxyAddr(na net.Addr, sni string) (string, string) {
 func getRealAddr(na net.Addr, sni string) (string, string) {
 	s := strings.Split(na.String(), ":")
 	port := s[len(s)-1]
+	if theConfig["destPortOverride"].StrVal != "" {
+		port = theConfig["destPortOverride"].StrVal
+	}
 	if sni != "" {
 		return sni, port
 	}
@@ -99,8 +110,6 @@ func (c *connection) doneWithConn() {
 	c.state = closed
 	c.inConn.Close()
 	c.outConn.Close()
-	close(c.outBound)
-	close(c.inBound)
 }
 
 // next four goroutines per connection
@@ -238,7 +247,10 @@ func (c *connection) outReadLoop() {
 func (c *connection) run() {
 
 	// use local address
-	ra := c.inConn.LocalAddr()
+	la := c.inConn.LocalAddr()
+	ra := c.inConn.RemoteAddr()
+	// log.Print("LA", la, "\nRA", ra)
+	count.Incr("conn-from-" + hostPart(ra.String()))
 	firstRead := make([]byte, 1024)
 	n, err := c.inConn.Read(firstRead)
 	// log.Println("Got first read", string(firstRead[:n]))
@@ -251,20 +263,22 @@ func (c *connection) run() {
 	sni, err := parser.GetHostname(firstRead[:n])
 	if err != nil {
 		sni = ""
+	} else {
+		log.Println("Got an SNI", sni)
 	}
 	// first get NAT address
 	if sni == "" && theConfig["isNAT"].BoolVal {
 		_, host, newConn, err := getOriginalDst(&c.inConn)
 		if err == nil {
-			log.Println("NAT Addr:", host)
+			host = hostPart(host)
+			log.Println("Got NAT Addr:", host)
 			sni = host
 			c.inConn = *newConn
 		}
 	}
-
-	// log.Println("Got an SNI", sni)
-	h, p := getProxyAddr(ra, sni)
-	rH, rP := getRealAddr(ra, sni)
+	count.Incr("connect-out-remote-" + sni)
+	h, p := getProxyAddr(la, sni)
+	rH, rP := getRealAddr(la, sni)
 	c.outConn, err = net.DialTimeout("tcp", h+":"+p, 15*time.Second)
 	if err != nil {
 		log.Println("ERROR: connect out got err", err)
