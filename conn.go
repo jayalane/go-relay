@@ -51,12 +51,12 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 	return []byte(""), false
 }
 
-func hostPart(ad string) string {
+func hostPart(ad string) (string, string) {
 	s := strings.Split(ad, ":")
 	if len(s) < 2 {
-		return ""
+		return "", s[len(s)-1]
 	}
-	return strings.Join(s[:len(s)-1], "")
+	return strings.Join(s[:len(s)-1], ""), s[len(s)-1]
 }
 
 // getProxyAddr will return the squid endpoint
@@ -66,18 +66,18 @@ func getProxyAddr(na net.Addr, sni string) (string, string) {
 
 // getRealAddr will look up the true hostname
 // for the CONNECT call - maybe via zone xfer?
-func getRealAddr(na net.Addr, sni string) (string, string) {
-	s := strings.Split(na.String(), ":")
-	port := s[len(s)-1]
+func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
+	h, port := hostPart(na.String())
 	if theConfig["destPortOverride"].StrVal != "" {
 		port = theConfig["destPortOverride"].StrVal
+	} else {
+		port = sniPort
 	}
 	if sni != "" {
 		return sni, port
 	}
-	ip := strings.Join(s[0:len(s)-1], ":")
 	if theConfig["destHostMethod"].StrVal == "incoming" {
-		return ip, port
+		return h, port
 	}
 	if theConfig["destHostMethod"].StrVal == "hardwired" {
 		return theConfig["destHostHardwired"].StrVal, port
@@ -250,7 +250,8 @@ func (c *connection) run() {
 	la := c.inConn.LocalAddr()
 	ra := c.inConn.RemoteAddr()
 	// log.Print("LA", la, "\nRA", ra)
-	count.Incr("conn-from-" + hostPart(ra.String()))
+	h, _ := hostPart(ra.String())
+	count.Incr("conn-from-" + h)
 	firstRead := make([]byte, 1024)
 	n, err := c.inConn.Read(firstRead)
 	// log.Println("Got first read", string(firstRead[:n]))
@@ -267,19 +268,21 @@ func (c *connection) run() {
 		log.Println("Got an SNI", sni)
 	}
 	// first get NAT address
+	natPort := ""
 	if sni == "" && theConfig["isNAT"].BoolVal {
-		_, host, newConn, err := getOriginalDst(&c.inConn)
+		_, addr, newConn, err := getOriginalDst(&c.inConn)
 		if err == nil {
-			host = hostPart(host)
-			log.Println("Got NAT Addr:", host)
+			host, port := hostPart(addr)
+			log.Println("Got NAT Addr:", host, port)
 			sni = host
+			natPort = port
 			c.inConn = *newConn
 		}
 	}
 	count.Incr("connect-out-remote-" + sni)
-	h, p := getProxyAddr(la, sni)
-	rH, rP := getRealAddr(la, sni)
-	c.outConn, err = net.DialTimeout("tcp", h+":"+p, 15*time.Second)
+	hP, pP := getProxyAddr(la, sni)
+	rH, rP := getRealAddr(la, sni, natPort)
+	c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
 	if err != nil {
 		log.Println("ERROR: connect out got err", err)
 		if err, ok := err.(net.Error); ok && err.Timeout() {
