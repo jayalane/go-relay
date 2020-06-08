@@ -102,7 +102,7 @@ func (c *connection) doneWithConn() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state == closed {
-		count.Incr("connection-pairing-dup")
+		count.Incr("connection-pairing-dup-close")
 		return
 	}
 	count.Incr("connection-pairing-closed")
@@ -110,6 +110,7 @@ func (c *connection) doneWithConn() {
 	c.state = closed
 	c.inConn.Close()
 	c.outConn.Close()
+	// I was closign the channel but that panicked go
 }
 
 // next four goroutines per connection
@@ -178,7 +179,7 @@ func (c *connection) outWriteLoop() {
 	}
 }
 
-// inReadLoop (for inboudn) reads from the far end and sticks into a
+// inReadLoop (for inboud) reads from the far end and sticks into a
 // channel
 func (c *connection) inReadLoop() {
 
@@ -261,27 +262,27 @@ func (c *connection) run() {
 		c.inConn.Close()
 		return
 	}
-	sni, err := parser.GetHostname(firstRead[:n])
+	dstHost, err := parser.GetHostname(firstRead[:n])
 	if err != nil {
-		sni = ""
+		dstHost = ""
 	} else {
-		log.Println("Got an SNI", sni)
+		log.Println("Got an SNI", dstHost)
 	}
 	// first get NAT address
-	natPort := ""
-	if sni == "" && theConfig["isNAT"].BoolVal {
+	dstPort := ""
+	if dstHost == "" && theConfig["isNAT"].BoolVal {
 		_, addr, newConn, err := getOriginalDst(&c.inConn)
 		if err == nil {
 			host, port := hostPart(addr)
 			log.Println("Got NAT Addr:", host, port)
-			sni = host
-			natPort = port
+			dstHost = host
+			dstPort = port
 			c.inConn = *newConn
 		}
 	}
-	count.Incr("connect-out-remote-" + sni)
-	hP, pP := getProxyAddr(la, sni)
-	rH, rP := getRealAddr(la, sni, natPort)
+	count.Incr("connect-out-remote-" + dstHost)
+	hP, pP := getProxyAddr(la, dstHost)
+	rH, rP := getRealAddr(la, dstHost, dstPort)
 	c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
 	if err != nil {
 		log.Println("ERROR: connect out got err", err)
