@@ -16,6 +16,18 @@ const (
 	iP6tSoOriginalDst = 80
 )
 
+func isEINTR(err error) bool {
+
+	if err == nil {
+		return false
+	}
+	errno, ok := err.(syscall.Errno)
+	if ok && errno == syscall.EINTR {
+		return true
+	}
+	return false
+}
+
 func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTCPConn *net.TCPConn, err error) {
 	if clientConn == nil {
 		err = errors.New("ERR: clientConn is nil")
@@ -47,9 +59,32 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 	// IPv6 version, didn't find a way to detect network family
 	//addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IPV6, IP6T_SO_ORIGINAL_DST)
 	// IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
-	addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, soOriginalDst)
-	if err != nil {
-		return
+	// Chris - this needs to handle EINTR
+	done := false
+	var addr *syscall.IPv6Mreq
+	for done != true {
+		addr, err = syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, soOriginalDst)
+		if err != nil {
+			if isEINTR(err) {
+				continue
+			}
+			fmt.Println("Error from getsockopt", err)
+			// still have to redup the FDs
+			var newConn net.Conn
+			newConn, err = net.FileConn(clientConnFile)
+			if err != nil {
+				return
+			}
+			if _, ok := newConn.(*net.TCPConn); ok {
+				newTCPConn = newConn.(*net.TCPConn)
+				clientConnFile.Close()
+			} else {
+				err = errors.New("Some error with FD cloning")
+				return
+			}
+			return
+		}
+		done = true
 	}
 	newConn, err := net.FileConn(clientConnFile)
 	if err != nil {
