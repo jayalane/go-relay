@@ -120,5 +120,6 @@ func main() {
 		}()
 	}
 	// waiting till done - just wait forever I think
+	log.Println("Waiting...")
 	<-theCtx.done
 }
