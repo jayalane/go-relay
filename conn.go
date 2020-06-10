@@ -35,7 +35,7 @@ type connection struct {
 const (
 	headerFor200      = "HTTP/1.1 200 Connection"
 	httpNewLine       = "\r\n"
-	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\n\r\n"
+	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\nX-Forwarded-For: %s\r\n\r\n"
 )
 
 // utility functions
@@ -320,6 +320,7 @@ func (c *connection) run() {
 		rH,
 		rP,
 		rH,
+		la.String(),
 	)
 	c.outConn.Write([]byte(connS))
 	log.Println("Handling a connection", c.inConn.RemoteAddr(), connS)
