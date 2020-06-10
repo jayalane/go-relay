@@ -320,7 +320,7 @@ func (c *connection) run() {
 		rH,
 		rP,
 		rH,
-		la.String(),
+		ra.String(),
 	)
 	c.outConn.Write([]byte(connS))
 	log.Println("Handling a connection", c.inConn.RemoteAddr(), connS)
