@@ -5,11 +5,13 @@ package main
 import (
 	count "github.com/jayalane/go-counter"
 	"github.com/jayalane/go-tinyconfig"
+	"github.com/lestrrat-go/file-rotatelogs"
 	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -52,15 +54,34 @@ func handleConn() {
 }
 
 func main() {
+
+	logPathTemplate := "/var/log/proxy.log.%Y%m%d"
+	u, err := user.Current()
+	if err != nil {
+		log.Panic("Can't check user id")
+	}
+	if u.Uid != "0" {
+		logPathTemplate = "./proxy.log.%Y%m%d"
+	}
+	// init rotating logs
+	r1, err := rotatelogs.New(
+		logPathTemplate,
+		rotatelogs.WithMaxAge(time.Hour*168),
+	)
+	if err != nil {
+		log.Panic("Can't open rotating logs")
+	}
+	log.SetOutput(r1)
+
 	// stats
 	count.InitCounters()
+
 	// config
 	if len(os.Args) > 1 && os.Args[1] == "--dumpConfig" {
 		log.Println(defaultConfig)
 		return
 	}
 	// still config
-	var err error
 	theConfig, err = config.ReadConfig("config.txt", defaultConfig)
 	log.Println("Config", theConfig)
 	if err != nil {
@@ -75,6 +96,7 @@ func main() {
 			os.Exit(11)
 		}
 	}
+
 	// init the globals
 	theCtx.connChan = make(chan *connection, 1000000)
 	theCtx.done = make(chan bool, 1)
@@ -91,6 +113,7 @@ func main() {
 		}
 	}()
 
+	// listen
 	for _, p := range strings.Split(theConfig["ports"].StrVal, ",") {
 		port, err := strconv.Atoi(p)
 		if err != nil {
@@ -106,6 +129,7 @@ func main() {
 			continue
 		}
 		log.Println("OK: Listening to", p)
+		// listen handler go routine
 		go func() {
 			for {
 				conn, err := ln.AcceptTCP()
@@ -119,6 +143,7 @@ func main() {
 			}
 		}()
 	}
+
 	// waiting till done - just wait forever I think
 	log.Println("Waiting...")
 	<-theCtx.done
