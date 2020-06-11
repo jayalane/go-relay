@@ -100,6 +100,7 @@ func initConn(in net.TCPConn) *connection {
 // can be called multiple times
 func (c *connection) doneWithConn() {
 	// log.Println("Closing connections")
+	time.Sleep(3 * time.Second) // drain time
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state == closed {
@@ -134,12 +135,10 @@ func (c *connection) inWriteLoop() {
 				len, err := c.inConn.Write(buffer[pos:total])
 				if len == 0 {
 					count.Incr("write-in-zero")
-					c.doneWithConn()
 					return
 				}
 				if err != nil {
 					count.Incr("write-in-err")
-					c.doneWithConn()
 					return
 				}
 				pos += len
@@ -171,12 +170,10 @@ func (c *connection) outWriteLoop() {
 				n, err := c.outConn.Write(buffer[pos:total])
 				if n == 0 {
 					count.Incr("write-out-zero")
-					c.doneWithConn()
 					return
 				}
 				if err != nil {
 					count.Incr("write-out-err")
-					c.doneWithConn()
 					return
 				}
 				pos += n
@@ -196,12 +193,15 @@ func (c *connection) inReadLoop() {
 	//  reads stuff from out and writes to channel till fd is dead
 	defer c.doneWithConn()
 	for {
+		var n int
 		var buffer []byte = make([]byte, 65536)
-		n, err := c.outConn.Read(buffer)
+		err := c.outConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
+		if err == nil {
+			n, err = c.outConn.Read(buffer)
+		}
 		//log.Println("inReadLoop got", n, err)
-		if err != nil {
+		if err != nil { // including read timeouts
 			count.Incr("read-in-err")
-			c.doneWithConn()
 			return
 		}
 		if n == 0 {
@@ -215,22 +215,22 @@ func (c *connection) inReadLoop() {
 			// this will fail for fragmented reads of
 			// first line
 			newBuf, ok2 := checkFor200(n, buffer)
-			if ok2 {
-				count.Incr("read-in-header")
-				//log.Println("Got 200 header")
-				c.state = up
+			if !ok2 {
+				count.Incr("read-in-bad-header")
 				c.lock.Unlock()
-				if len(newBuf) > 0 {
-					c.inBound <- newBuf
-				}
-				continue
+				return
 			}
-			count.Incr("read-in-bad-header")
+			count.Incr("read-in-header")
+			//log.Println("Got 200 header")
+			c.state = up
 			c.lock.Unlock()
-			c.doneWithConn()
-			return
+			if len(newBuf) > 0 {
+				c.inBound <- newBuf
+				count.Incr("read-in-ok")
+				count.IncrDelta("read-in-len", int64(n))
+			}
+			continue
 		}
-		c.lock.Unlock()
 		count.Incr("read-in-ok")
 		count.IncrDelta("read-in-len", int64(n))
 		c.inBound <- buffer[0:n] //  to do non-blocking?
@@ -243,12 +243,15 @@ func (c *connection) outReadLoop() {
 	//  reads stuff from in and writes to channel till fd is dead
 	defer c.doneWithConn()
 	for {
+		var n int
 		var buffer []byte = make([]byte, 65536)
-		n, err := c.inConn.Read(buffer)
+		err := c.inConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
+		if err == nil {
+			n, err = c.inConn.Read(buffer)
+		}
 		//log.Println("Read outReadLoop got", n, err)
 		if err != nil {
 			count.Incr("read-out-read-err")
-			c.doneWithConn()
 			return
 		}
 		if n == 0 {
@@ -272,10 +275,14 @@ func (c *connection) run() {
 	h, _ := hostPart(ra.String())
 	count.Incr("conn-from-" + h)
 	firstRead := make([]byte, 1024)
-	n, err := c.inConn.Read(firstRead)
+	err := c.outConn.SetReadDeadline(time.Now().Add(time.Second * 15))
+	var n int
+	if err == nil {
+		n, err = c.inConn.Read(firstRead)
+	}
 	// log.Println("Got first read", string(firstRead[:n]))
 	if err != nil {
-		log.Println("ERROR: First read on inbound got error", err)
+		log.Println("ERROR: First read on inbound got error or timeout", err)
 		count.Incr("read-in-err")
 		return
 	}
@@ -300,9 +307,9 @@ func (c *connection) run() {
 		c.inConn = *newConn
 		c.lock.Unlock()
 	}
-	count.Incr("connect-out-remote-" + dstHost)
 	hP, pP := getProxyAddr(la, dstHost)
 	rH, rP := getRealAddr(la, dstHost, dstPort)
+	count.Incr("connect-out-remote-" + rH)
 	// log.Println("Dial to", hP, pP)
 	c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
 	if err != nil {
@@ -312,6 +319,7 @@ func (c *connection) run() {
 		}
 		count.Incr("connect-out-error")
 		c.inConn.Close()
+		c.outConn.Close()
 		// log.Println("Closed inConn")
 		return
 	}
