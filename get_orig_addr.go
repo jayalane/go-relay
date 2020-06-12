@@ -7,7 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	//"log"
 	"net"
 	"syscall"
 )
@@ -69,7 +69,7 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 			if isEINTR(err) {
 				continue
 			}
-			log.Println("Error from getsockopt", err)
+			//log.Println("Error from getsockopt", err)
 			// still have to redup the FDs
 			var newConn net.Conn
 			newConn, err = net.FileConn(clientConnFile)
