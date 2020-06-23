@@ -112,7 +112,7 @@ func main() {
 			log.Println("ERROR: can't listen to", p, err) // handle error
 			continue
 		}
-		tcp := net.TCPAddr{IP: net.IPv4(0, 0, 0, 0), Port: port, ""}
+		tcp := net.TCPAddr{IP: net.IPv4(0, 0, 0, 0), Port: port}
 		ln, err := net.ListenTCP("tcp", &tcp)
 		if err != nil {
 			count.Incr("listen-error")
