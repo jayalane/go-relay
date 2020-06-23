@@ -117,7 +117,9 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 
 // go routine to get connections from listener
 func handleConn() {
+
 	_, cidr, err := net.ParseCIDR(theConfig["destCidrUseConnect"].StrVal)
+
 	if err == nil {
 		theCtx.relayCidr = cidr
 	} else {
@@ -127,6 +129,7 @@ func handleConn() {
 			err,
 		)
 	}
+	// taking from main loop - lots of these
 	for {
 		select {
 		case c := <-theCtx.connChan:
@@ -226,16 +229,9 @@ func (c *connection) outWriteLoop() {
 				ml.ld("Returning from outWriteLoop", ok)
 				return
 			}
-<<<<<<< HEAD
-			total := len(buffer)
-			// log.Printf("Got a buffer for writing %d {%s}\n",
-			// 	total, buffer[0:total])
-=======
-			ml.ld("Going to write outbound", buffer)
 			total := len(buffer)
 			ml.ld("Got a buffer for out writing",
 				total, buffer[0:total])
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 			pos := 0
 			for pos < total {
 				n, err := c.outConn.Write(buffer[pos:total])
@@ -286,18 +282,12 @@ func (c *connection) inReadLoop() {
 			// log.Println("ERROR: inReadLoop got null read")
 			continue
 		}
-<<<<<<< HEAD
-		//log.Printf("state %d Got data in %d {%s}\n%d\n", c.state,
-		//	n,
-		//	string(buffer[0:n]),
-		//	c.state)
-=======
+
 		ml.ld("Got data in",
 			c.state,
 			n,
 			string(buffer[0:n]),
 		)
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 		c.lock.Lock()
 		if c.state == waitingFor200 {
 			// this will fail for fragmented reads of
@@ -312,10 +302,7 @@ func (c *connection) inReadLoop() {
 				return
 			}
 			count.Incr("read-in-header")
-<<<<<<< HEAD
-=======
 			ml.ld("Got 200 header")
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 			c.state = up
 			c.lock.Unlock()
 			if len(newBuf) > 0 {
@@ -342,8 +329,8 @@ func (c *connection) inReadLoop() {
 // for outbound data flow
 func (c *connection) outReadLoop() {
 	//  reads stuff from in and writes to channel till fd is dead
-	//log.Println("Starting in outReadLoop for", c)
-	//defer log.Println("exiting outReadLoop for", c)
+	ml.ld("Starting in outReadLoop for", c)
+	defer ml.ld("exiting outReadLoop for", c)
 	defer c.doneWithConn()
 	for {
 		var n int
@@ -365,14 +352,10 @@ func (c *connection) outReadLoop() {
 			count.Incr("read-out-zero")
 			continue
 		}
-<<<<<<< HEAD
-		//log.Printf("Got data out %d {%s}\n", n, string(buffer[0:n]))
-=======
 		ml.ld("Got data out",
 			n,
 			string(buffer[0:n]),
 		)
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 		count.Incr("read-out-ok")
 		count.Incr("read-out-len")
 		c.outBound <- buffer[0:n] // to do non-blocking?
@@ -385,42 +368,23 @@ func (c *connection) run() {
 	// use local address
 	la := c.inConn.LocalAddr()
 	ra := c.inConn.RemoteAddr()
-<<<<<<< HEAD
-	//	log.Print("LA", la, "\nRA", ra)
-	h, _ := hostPart(ra.String())
-	count.Incr("conn-from-" + h)
-	firstRead := make([]byte, 1024)
-	err := c.inConn.SetReadDeadline(time.Now().Add(time.Second * 1))
-=======
 	ml.ld("LA", la, "\nRA", ra)
 	h, _ := hostPart(ra.String())
 	count.Incr("conn-from-" + h)
 	firstRead := make([]byte, 1024)
 	err := c.inConn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 	var n int
 	if err == nil {
 		n, err = c.inConn.Read(firstRead)
 	}
-<<<<<<< HEAD
-	//	log.Println("Got first read", string(firstRead[:n]))
-	if err != nil {
-		if err, ok := err.(net.Error); ok && !err.Timeout() {
-			// log.Println("ERROR: First read on inbound got error or timeout", err)
-			count.Incr("read-out-err")
-			return
-		}
-		count.Incr("read-out-timeout-first")
-=======
 	ml.ld("Got first read", string(firstRead[:n]))
 	if err, ok := err.(net.Error); ok && err.Timeout() {
 		ml.ld("ERROR: First read on inbound got error or timeout", err)
 		count.Incr("read-in-timeout")
 		n = 0
 	} else if err != nil {
-		ml.ld("ERROR: First read error", err)
+		ml.la("ERROR: First read error", err)
 		return
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 	}
 	hasSNI := false
 	dstHost, err := parser.GetHostname(firstRead[:n])
@@ -437,11 +401,7 @@ func (c *connection) run() {
 		_, addr, newConn, err := getOriginalDst(&c.inConn)
 		if err == nil {
 			host, port := hostPart(addr)
-<<<<<<< HEAD
-			// log.Println("Got NAT Addr:", host, port)
-=======
 			ml.ld("Got NAT Addr:", host, port)
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 			dstHost = host
 			dstPort = port
 			count.Incr("NAT")
@@ -452,20 +412,6 @@ func (c *connection) run() {
 	hP, pP := getProxyAddr(la, dstHost, hasSNI)
 	rH, rP := getRealAddr(la, dstHost, dstPort)
 	count.Incr("connect-out-remote-" + rH)
-<<<<<<< HEAD
-	//log.Println("Dial to", hP, pP)
-	c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
-	if err != nil {
-		log.Println("ERROR: connect out got err", err)
-		if err, ok := err.(net.Error); ok && err.Timeout() {
-			count.Incr("connect-out-timeout")
-		}
-		count.Incr("connect-out-error")
-		c.inConn.Close()
-		c.outConn.Close()
-		log.Println("Closed inConn")
-		return
-=======
 	if hP == "" {
 		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
 		if err != nil {
@@ -475,7 +421,9 @@ func (c *connection) run() {
 			}
 			count.Incr("connect-out-error")
 			c.inConn.Close()
-			c.outConn.Close()
+			if c.outConn != nil {
+				c.outConn.Close()
+			}
 			ml.ld("Closed inConn")
 			return
 		}
@@ -507,7 +455,6 @@ func (c *connection) run() {
 		)
 		c.outConn.Write([]byte(connS))
 		ml.la("Handling a connection", c.inConn.RemoteAddr(), connS)
->>>>>>> e82742c... deadlock fixed; smaller timeout for frist READ for SNI; log levels
 	}
 	// and stage the fristRead data
 	c.outBound <- firstRead[:n]
