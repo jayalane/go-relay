@@ -17,14 +17,18 @@ import (
 	"time"
 )
 
+var ml lll
 var theConfig config.Config
 var defaultConfig = `#
 ports = 5999
 isNAT = true
+debugLevel = debug
+# debug, all or none
 squidHost = localhost
 squidPort = 3128
 destPortOverride = 
 destHostOverride = 
+destCidrUseConnect = 0.0.0.0/0
 numConnectionHandlers = 10000
 profListen = localhost:6060
 # comments
@@ -32,26 +36,12 @@ profListen = localhost:6060
 
 // global state
 type context struct {
-	connChan chan *connection // fed by listener
-	done     chan bool
+	connChan  chan *connection // fed by listener
+	done      chan bool
+	relayCidr *net.IPNet
 }
 
 var theCtx context
-
-// then the listener go routine
-
-// go routine to get connections from listener
-func handleConn() {
-	for {
-		select {
-		case c := <-theCtx.connChan:
-			count.Incr("conn-chan-remove")
-			c.run() // have to think the data flow here
-		case <-time.After(60 * time.Second):
-			count.Incr("conn-chan-idle")
-		}
-	}
-}
 
 func main() {
 
@@ -100,6 +90,7 @@ func main() {
 	// init the globals
 	theCtx.connChan = make(chan *connection, 1000000)
 	theCtx.done = make(chan bool, 1)
+	ml = initLll("PROXY", theConfig["debugLevel"].StrVal)
 
 	// start go routines
 	for i := 0; i < theConfig["numConnectionHandlers"].IntVal; i++ {
