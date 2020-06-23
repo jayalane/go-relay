@@ -442,7 +442,9 @@ func (c *connection) run() {
 			}
 			count.Incr("connect-out-error")
 			c.inConn.Close()
-			c.outConn.Close()
+			if c.outConn != nil {
+				c.outConn.Close()
+			}
 			ml.ld("Closed inConn")
 			return
 		}
