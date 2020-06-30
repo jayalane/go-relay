@@ -3,7 +3,11 @@
 package main
 
 import (
+	"github.com/lestrrat-go/file-rotatelogs"
 	"log"
+	"os/user"
+	"sync/atomic"
+	"time"
 )
 
 const (
@@ -17,7 +21,35 @@ type lll struct {
 	level  int
 }
 
+var initOnceDone int64 = 0
+
+func initOnce() {
+	if atomic.LoadInt64(&initOnceDone) == 1 {
+		return
+	}
+	atomic.StoreInt64(&initOnceDone, 1)
+	logPathTemplate := "/var/log/proxy.log.%Y%m%d"
+	u, err := user.Current()
+	if err != nil {
+		log.Panic("Can't check user id")
+	}
+	if u.Uid != "0" {
+		logPathTemplate = "./proxy.log.%Y%m%d"
+	}
+	// init rotating logs
+	r1, err := rotatelogs.New(
+		logPathTemplate,
+		rotatelogs.WithMaxAge(time.Hour*168),
+	)
+	if err != nil {
+		log.Panic("Can't open rotating logs")
+	}
+	log.SetOutput(r1)
+
+}
+
 func initLll(modName string, level string) lll {
+	initOnce()
 	if len(modName) > 50 {
 		log.Panic("init_lll called with giant module name", modName)
 	}
