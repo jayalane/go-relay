@@ -115,20 +115,43 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 
 }
 
+// checkBan will check a net.Addr for
+// being in the ban CIDR
+func checkBan(la net.Addr) bool {
+	if theCtx.banCidr == nil {
+		return false
+	}
+	h, _ := hostPart(la.String())
+	ip := net.ParseIP(h)
+	ml.ld("Checking ip, cidr", ip, theCtx.banCidr, theCtx.banCidr.Contains(ip))
+	return theCtx.banCidr.Contains(ip)
+}
+
+func parseCidr(cidr **net.IPNet, cidrStr string) {
+	_, aCidr, err := net.ParseCIDR(cidrStr)
+	ml.la("Parsing", cidrStr)
+	if err == nil {
+		*cidr = aCidr
+	} else {
+		*cidr = nil
+		ml.la("Failed to parse Cidr", cidrStr, err)
+	}
+}
+
+// init context for configuation
+func initConnCtx() {
+
+	// setup CIDR to use tunnel/direct NAT decision
+	parseCidr(&theCtx.relayCidr, theConfig["destCidrUseConnect"].StrVal)
+
+	// setup CIDR to block local calls
+	parseCidr(&theCtx.banCidr, theConfig["srcCidrBan"].StrVal)
+
+}
+
 // go routine to get connections from listener
 func handleConn() {
 
-	_, cidr, err := net.ParseCIDR(theConfig["destCidrUseConnect"].StrVal)
-
-	if err == nil {
-		theCtx.relayCidr = cidr
-	} else {
-		theCtx.relayCidr = nil
-		ml.la("Failed to parse Cidr",
-			theConfig["destCidrUseConnect"].StrVal,
-			err,
-		)
-	}
 	// taking from main loop - lots of these
 	for {
 		select {
@@ -363,10 +386,16 @@ func (c *connection) outReadLoop() {
 // run starts up the work on a new connection
 func (c *connection) run() {
 
-	// use local address
+	// get local address
 	la := c.inConn.LocalAddr()
 	ra := c.inConn.RemoteAddr()
-	ml.ld("LA", la, "\nRA", ra)
+	ml.ld("LA", la, "RA", ra)
+	if checkBan(ra) {
+		ml.la("ERROR: LocalAddr banned", ra)
+		c.inConn.Close()
+		count.Incr("conn-ban")
+		return
+	}
 	h, _ := hostPart(ra.String())
 	count.Incr("conn-from-" + h)
 	firstRead := make([]byte, 1024)
@@ -391,6 +420,7 @@ func (c *connection) run() {
 	} else {
 		count.Incr("Sni")
 		hasSNI = true
+		ml.ld("Got SNI", dstHost)
 	}
 	// first get NAT address
 	dstPort := ""
