@@ -314,8 +314,6 @@ func (c *connection) inReadLoop() {
 			go c.inWriteLoop()
 			go c.outWriteLoop()
 			continue
-		} else {
-			c.lock.Unlock()
 		}
 		c.lock.Unlock()
 		count.Incr("read-in-ok")
