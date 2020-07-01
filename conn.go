@@ -86,9 +86,10 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 	if isSNI {
 		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 	}
-	h, _ := hostPart(na.String())
-	ip := net.ParseIP(h)
+	ip := net.ParseIP(dst)
+	ml.ld("Checking for squid", na, dst, ip, theCtx.relayCidr)
 	if theCtx.relayCidr != nil && theCtx.relayCidr.Contains(ip) {
+		ml.ld("Checks ok use squid ", ip, theCtx.relayCidr)
 		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 	}
 	return "", ""
@@ -105,8 +106,6 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	}
 	if sni != "" {
 		return sni, port
-	}
-	if theConfig["destHostMethod"].StrVal == "incoming" {
 	}
 	if theConfig["destHostOverride"].StrVal != "" {
 		return theConfig["destHostOverride"].StrVal, port
@@ -129,7 +128,7 @@ func checkBan(la net.Addr) bool {
 
 func parseCidr(cidr **net.IPNet, cidrStr string) {
 	_, aCidr, err := net.ParseCIDR(cidrStr)
-	ml.la("Parsing", cidrStr)
+	ml.la("Parsing", cidrStr, aCidr, err)
 	if err == nil {
 		*cidr = aCidr
 	} else {
@@ -142,8 +141,7 @@ func parseCidr(cidr **net.IPNet, cidrStr string) {
 func initConnCtx() {
 
 	// setup CIDR to use tunnel/direct NAT decision
-	parseCidr(&theCtx.relayCidr, theConfig["destCidrUseConnect"].StrVal)
-
+	parseCidr(&theCtx.relayCidr, theConfig["destCidrUseSquid"].StrVal)
 	// setup CIDR to block local calls
 	parseCidr(&theCtx.banCidr, theConfig["srcCidrBan"].StrVal)
 
@@ -434,11 +432,11 @@ func (c *connection) run() {
 			dstPort = port
 			count.Incr("NAT")
 		}
-		c.inConn = *newConn
+		c.inConn = *newConn // even in err case
 		c.lock.Unlock()
 	}
-	hP, pP := getProxyAddr(la, dstHost, hasSNI)
 	rH, rP := getRealAddr(la, dstHost, dstPort)
+	hP, pP := getProxyAddr(la, rH, hasSNI)
 	count.Incr("connect-out-remote-" + rH)
 	if hP == "" {
 		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
