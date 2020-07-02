@@ -360,7 +360,7 @@ func (c *connection) outReadLoop() {
 		}
 		ml.ld("Read outReadLoop got", n, err)
 		if err != nil {
-			if err, ok := err.(net.Error); ok && !err.Timeout() {
+			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-out-timeout")
 			} else {
 				count.Incr("read-out-read-err")
