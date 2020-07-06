@@ -88,7 +88,8 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 	}
 	ip := net.ParseIP(dst)
 	ml.ld("Checking for squid", na, dst, ip, theCtx.relayCidr)
-	if theCtx.relayCidr != nil && theCtx.relayCidr.Contains(ip) {
+	if theCtx.relayCidr == nil || theCtx.relayCidr.Contains(ip) {
+		// if no config, always use squid
 		ml.ld("Checks ok use squid ", ip, theCtx.relayCidr)
 		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 	}
