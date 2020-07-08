@@ -211,7 +211,7 @@ func (c *connection) inWriteLoop() {
 				count.Incr("write-in-not-ok")
 				continue
 			}
-			ml.ld("Going to write inbound", buffer)
+			ml.ld("Going to write inbound", len(buffer))
 			total := len(buffer)
 			pos := 0
 			for pos < total {
@@ -253,7 +253,7 @@ func (c *connection) outWriteLoop() {
 			}
 			total := len(buffer)
 			ml.ld("Got a buffer for out writing",
-				total, buffer[0:total])
+				total)
 			pos := 0
 			for pos < total {
 				n, err := c.outConn.Write(buffer[pos:total])
