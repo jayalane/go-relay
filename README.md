@@ -23,3 +23,7 @@ Went with just 4 go-routines per connection-pair, one each to read
 from each connection and one each to write to each connection.  I
 don't think this will be very high volume, probably few thousand
 connections max.  
+
+Commit 11de0c189812257a860e3bffce614148388b74a9 is first that will runs under 
+load for a pretty long time correctly.  Previous versions worked but had
+cass when they didn't close connections.  
