@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	count "github.com/jayalane/go-counter"
 	"github.com/paultag/sniff/parser"
@@ -33,6 +34,7 @@ type connection struct {
 
 const (
 	headerFor200      = "HTTP/1.1 200 Connection"
+	headerForHost     = "Host: "
 	httpNewLine       = "\r\n"
 	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\nX-Forwarded-For: %s\r\n\r\n"
 )
@@ -127,6 +129,7 @@ func checkBan(la net.Addr) bool {
 	return theCtx.banCidr.Contains(ip)
 }
 
+// parseCidr checks cidrStr and does error handling/logging
 func parseCidr(cidr **net.IPNet, cidrStr string) {
 	_, aCidr, err := net.ParseCIDR(cidrStr)
 	ml.la("Parsing", cidrStr, aCidr, err)
@@ -138,7 +141,7 @@ func parseCidr(cidr **net.IPNet, cidrStr string) {
 	}
 }
 
-// init context for configuation
+// initConnCtx parses the config for this file
 func initConnCtx() {
 
 	// setup CIDR to use tunnel/direct NAT decision
@@ -148,7 +151,22 @@ func initConnCtx() {
 
 }
 
-// go routine to get connections from listener
+// getHttpHost checks a buffer for an HTTP 1 style Host line
+func getHttpHost(data []byte) (string, error) {
+	a := strings.Split(string(data), httpNewLine)
+	for _, s := range a {
+		if len(s) >= len(headerForHost) && s[0:len(headerForHost)] == headerForHost {
+			b := strings.Split(s, " ")
+			if len(b) >= 1 {
+				return b[1], nil
+			}
+			return "", errors.New("Conn line short" + string(s))
+		}
+	}
+	return "", errors.New("No Host header")
+}
+
+// handleConn is a long lived go routine to get connections from listener
 func handleConn() {
 
 	// taking from main loop - lots of these
@@ -196,7 +214,7 @@ func (c *connection) doneWithConn() {
 
 // next four goroutines per connection
 
-// inWriteLoop writes date from the far end
+// inWriteLoop writes data from the far end
 // back to the caller
 func (c *connection) inWriteLoop() {
 	//log.Println("Starting inWriteLoop for", c)
@@ -413,9 +431,19 @@ func (c *connection) run() {
 		return
 	}
 	hasSNI := false
-	dstHost, err := parser.GetHostname(firstRead[:n])
+	dstHost, err := parser.GetHostname(firstRead[:n]) // peak for SNI in https
 	if err != nil {
-		dstHost = ""
+		// check for HTTP Host: header in http
+		dstHost, err = getHttpHost(firstRead[:n])
+		if err != nil {
+			ml.ld("No Host Header:", err)
+			dstHost = ""
+		} else {
+			count.Incr("Host")
+			hasSNI = true // not technically but Host is like SNI
+			ml.ld("Got Host Header", dstHost)
+		}
+
 	} else {
 		count.Incr("Sni")
 		hasSNI = true
