@@ -469,18 +469,18 @@ func (c *connection) run() {
 	count.Incr("connect-out-remote-" + rH)
 	if hP == "" {
 		count.Incr("direct-connect")
-		count.Incr("direct-connect-" + c.inConn.RemoteAddr().String())
+		count.Incr("direct-connect-" + rH + ":" + rP)
 		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
 		if err != nil {
 			ml.ld("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("direct-connect-timeout")
-				count.Incr("direct-connect-timeout-" + c.inConn.RemoteAddr().String())
+				count.Incr("direct-connect-timeout-" + rH + ":" + rP)
 			}
 			count.Incr("connect-out-error")
 			count.Incr("direct-connect-error")
-			count.Incr("direct-connect-error-" + c.inConn.RemoteAddr().String())
+			count.Incr("direct-connect-error-" + rH + ":" + rP)
 			c.inConn.Close()
 			if c.outConn != nil {
 				c.outConn.Close()
@@ -504,15 +504,19 @@ func (c *connection) run() {
 	} else {
 		ml.ld("Dial to", hP, pP)
 		count.Incr("proxy-connect")
+		count.Incr("proxy-connect-" + hP + pP)
 		c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
 		if err != nil {
 			ml.ld("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("proxy-connect-timeout")
+				count.Incr("proxy-connect-timeout" + hP + pP)
+			} else {
+				count.Incr("connect-out-error")
+				count.Incr("proxy-connect-error")
+				count.Incr("proxy-connect-error" + hP + pP)
 			}
-			count.Incr("connect-out-error")
-			count.Incr("proxy-connect-error")
 			c.inConn.Close()
 			if c.outConn != nil {
 				c.outConn.Close()
@@ -522,6 +526,7 @@ func (c *connection) run() {
 		}
 		count.Incr("connect-out-good")
 		count.Incr("proxy-connect-good")
+		count.Incr("proxy-connect-good" + hP + pP)
 		connS := fmt.Sprintf(
 			requestForConnect,
 			rH,
