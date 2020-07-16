@@ -23,12 +23,14 @@ const (
 
 // info about an object to check
 type connection struct {
-	lock     sync.RWMutex
-	state    connState
-	inConn   net.TCPConn
-	outConn  net.Conn
-	outBound chan []byte
-	inBound  chan []byte
+	lock       sync.RWMutex
+	state      connState
+	inConn     net.TCPConn
+	outConn    net.Conn
+	remoteHost string
+	remotePort string
+	outBound   chan []byte
+	inBound    chan []byte
 	// may need state later on
 }
 
@@ -152,7 +154,7 @@ func initConnCtx() {
 }
 
 // getHttpHost checks a buffer for an HTTP 1 style Host line
-func getHttpHost(data []byte) (string, error) {
+func getHTTPHost(data []byte) (string, error) {
 	a := strings.Split(string(data), httpNewLine)
 	for _, s := range a {
 		if len(s) >= len(headerForHost) && s[0:len(headerForHost)] == headerForHost {
@@ -185,8 +187,9 @@ func handleConn() {
 // returns an initialized connection
 func initConn(in net.TCPConn) *connection {
 	c := connection{inConn: in}
-	c.outBound = make(chan []byte, 10000)
-	c.inBound = make(chan []byte, 10000)
+	numBuffers := theConfig["numBuffers"].IntVal
+	c.outBound = make(chan []byte, numBuffers)
+	c.inBound = make(chan []byte, numBuffers)
 	c.lock = sync.RWMutex{}
 	c.state = waitingFor200
 	return &c
@@ -336,6 +339,7 @@ func (c *connection) inReadLoop() {
 			// log.Println("Got answer", ok2, newBuf)
 			if !ok2 {
 				count.Incr("read-in-bad-header")
+				count.Incr("read-in-bad-header-" + c.remoteHost + ":" + c.remotePort)
 				c.inConn.Close()
 				c.outConn.Close()
 				c.lock.Unlock()
@@ -434,7 +438,7 @@ func (c *connection) run() {
 	dstHost, err := parser.GetHostname(firstRead[:n]) // peak for SNI in https
 	if err != nil {
 		// check for HTTP Host: header in http
-		dstHost, err = getHttpHost(firstRead[:n])
+		dstHost, err = getHTTPHost(firstRead[:n])
 		if err != nil {
 			ml.ld("No Host Header:", err)
 			dstHost = ""
@@ -466,6 +470,8 @@ func (c *connection) run() {
 	}
 	rH, rP := getRealAddr(la, dstHost, dstPort)
 	hP, pP := getProxyAddr(la, rH, hasSNI)
+	c.remoteHost = rH
+	c.remotePort = rP
 	count.Incr("connect-out-remote-" + rH)
 	if hP == "" {
 		count.Incr("direct-connect")

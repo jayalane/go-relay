@@ -26,7 +26,8 @@ squidPort = 3128
 destPortOverride = 
 destHostOverride = 
 destCidrUseSquid = 0.0.0.0/0
-numConnectionHandlers = 10000
+numConnectionHandlers = 3
+numBuffers = 100
 profListen = localhost:6060
 srcCidrBan = 127.0.0.0/8
 # comments
@@ -66,7 +67,8 @@ func main() {
 	count.InitCounters()
 
 	// init the globals
-	theCtx.connChan = make(chan *connection, 1000000)
+	numConnHand := theConfig["numConnectionHandler"].IntVal
+	theCtx.connChan = make(chan *connection, numConnHand)
 	theCtx.done = make(chan bool, 1)
 	fmt.Println("Cidrs", theConfig["destCidrUseSquid"].StrVal)
 	fmt.Println("Cidrs", theConfig["srcCidrBan"].StrVal)
