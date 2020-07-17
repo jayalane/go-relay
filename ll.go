@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	debug = iota
-	regular
+	network = iota
+	state
+	all
 	none
 )
 
@@ -54,26 +55,35 @@ func initLll(modName string, level string) lll {
 		log.Panic("init_lll called with giant module name", modName)
 	}
 	var theLev int
-	if level == "debug" {
-		theLev = debug
+	if level == "network" {
+		theLev = network
 	} else if level == "none" {
 		theLev = none
+	} else if level == "state" {
+		theLev = state
 	} else {
-		theLev = regular
+		theLev = all
 	}
 	res := lll{module: modName, level: theLev}
 	return res
 }
 
-func (ll lll) ld(ls ...interface{}) {
-	if ll.level != debug {
+func (ll lll) ln(ls ...interface{}) {
+	if ll.level > network {
+		return
+	}
+	log.Println(ls...)
+}
+
+func (ll lll) ls(ls ...interface{}) {
+	if ll.level > state {
 		return
 	}
 	log.Println(ls...)
 }
 
 func (ll lll) la(ls ...interface{}) {
-	if ll.level == none {
+	if ll.level > all {
 		return
 	}
 	log.Println(ls...)

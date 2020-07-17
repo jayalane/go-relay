@@ -68,7 +68,7 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 			if isEINTR(err) {
 				continue
 			}
-			ml.ld("Error from getsockopt", err)
+			ml.ls("Error from getsockopt", err)
 			// still have to redup the FDs
 			var newConn net.Conn
 			newConn, err = net.FileConn(clientConnFile)
