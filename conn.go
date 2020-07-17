@@ -91,10 +91,10 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 	}
 	ip := net.ParseIP(dst)
-	ml.ld("Checking for squid", na, dst, ip, theCtx.relayCidr)
+	ml.ls("Checking for squid", na, dst, ip, theCtx.relayCidr)
 	if theCtx.relayCidr == nil || theCtx.relayCidr.Contains(ip) {
 		// if no config, always use squid
-		ml.ld("Checks ok use squid ", ip, theCtx.relayCidr)
+		ml.ls("Checks ok use squid ", ip, theCtx.relayCidr)
 		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
 	}
 	return "", ""
@@ -127,7 +127,7 @@ func checkBan(la net.Addr) bool {
 	}
 	h, _ := hostPart(la.String())
 	ip := net.ParseIP(h)
-	ml.ld("Checking ip, cidr", ip, theCtx.banCidr, theCtx.banCidr.Contains(ip))
+	ml.ls("Checking ip, cidr", ip, theCtx.banCidr, theCtx.banCidr.Contains(ip))
 	return theCtx.banCidr.Contains(ip)
 }
 
@@ -198,7 +198,7 @@ func initConn(in net.TCPConn) *connection {
 // doneWithConn closes everything safely when done
 // can be called multiple times
 func (c *connection) doneWithConn() {
-	ml.ld("Closing connections")
+	ml.ls("Closing connections")
 	time.Sleep(3 * time.Second) // drain time
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -228,30 +228,30 @@ func (c *connection) inWriteLoop() {
 		select {
 		case buffer, ok := <-c.inBound:
 			if !ok {
-				ml.ld("Write in continuing not ok", ok)
+				ml.ls("Write in continuing not ok", ok)
 				count.Incr("write-in-not-ok")
 				continue
 			}
-			ml.ld("Going to write inbound", len(buffer))
+			ml.ln("Going to write inbound", len(buffer))
 			total := len(buffer)
 			pos := 0
 			for pos < total {
 				len, err := c.inConn.Write(buffer[pos:total])
 				if len == 0 {
 					count.Incr("write-in-zero")
-					ml.ld("Write in zero", err)
+					ml.ls("Write in zero", err)
 					return
 				}
 				if err != nil {
 					count.Incr("write-in-err")
-					ml.ld("Write in erro", err)
+					ml.ls("Write in erro", err)
 					return
 				}
 				pos += len
 			}
 			count.IncrDelta("write-in-len", int64(total))
 			count.Incr("write-in-ok")
-			ml.ld("OK: sent in data",
+			ml.ln("OK: sent in data",
 				total,
 				string(buffer[:total]),
 				c.state)
@@ -269,11 +269,11 @@ func (c *connection) outWriteLoop() {
 		select {
 		case buffer, ok := <-c.outBound:
 			if !ok {
-				ml.ld("Returning from outWriteLoop", ok)
+				ml.ls("Returning from outWriteLoop", ok)
 				return
 			}
 			total := len(buffer)
-			ml.ld("Got a buffer for out writing",
+			ml.ln("Got a buffer for out writing",
 				total)
 			pos := 0
 			for pos < total {
@@ -290,7 +290,7 @@ func (c *connection) outWriteLoop() {
 			}
 			count.IncrDelta("write-out-len", int64(total))
 			count.Incr("write-out-ok")
-			ml.ld("OK: sent out data",
+			ml.ln("OK: sent out data",
 				total,
 				string(buffer[:total]),
 				c.state)
@@ -314,19 +314,25 @@ func (c *connection) inReadLoop() {
 			// log.Println("About to call read for inReadLoop state", c.state)
 			n, err = c.outConn.Read(buffer)
 		}
-		ml.ld("inReadLoop got", n, err)
+		ml.ln("inReadLoop got", n, err)
 		if err != nil { // including read timeouts
+			if err, ok := err.(net.Error); ok && err.Timeout() {
+				count.Incr("read-in-timeout")
+			} else {
+				count.Incr("read-in-read-err")
+				return
+			}
 			count.Incr("read-in-err")
-			// log.Println("ERROR: inReadLoop got error", err)
+			ml.ls("ERROR: inReadLoop got error", err)
 			return
 		}
 		if n == 0 {
 			count.Incr("read-in-zero")
-			// log.Println("ERROR: inReadLoop got null read")
+			ml.ls("ERROR: inReadLoop got null read")
 			continue
 		}
 
-		ml.ld("Got data in",
+		ml.ln("Got data in",
 			c.state,
 			n,
 			string(buffer[0:n]),
@@ -336,7 +342,7 @@ func (c *connection) inReadLoop() {
 			// this will fail for fragmented reads of
 			// first line
 			newBuf, ok2 := checkFor200(n, buffer)
-			// log.Println("Got answer", ok2, newBuf)
+			ml.ls("Got 200 answer", ok2)
 			if !ok2 {
 				count.Incr("read-in-bad-header")
 				count.Incr("read-in-bad-header-" + c.remoteHost + ":" + c.remotePort)
@@ -346,7 +352,7 @@ func (c *connection) inReadLoop() {
 				return
 			}
 			count.Incr("read-in-header")
-			ml.ld("Got 200 header")
+			ml.ls("Got 200 header")
 			c.state = up
 			c.lock.Unlock()
 			if len(newBuf) > 0 {
@@ -362,7 +368,7 @@ func (c *connection) inReadLoop() {
 		c.lock.Unlock()
 		count.Incr("read-in-ok")
 		count.IncrDelta("read-in-len", int64(n))
-		ml.ld("Putting the buffer into inboud")
+		ml.ln("Putting the buffer into inboud")
 		c.inBound <- buffer[0:n] //  to do non-blocking?
 	}
 }
@@ -371,8 +377,8 @@ func (c *connection) inReadLoop() {
 // for outbound data flow
 func (c *connection) outReadLoop() {
 	//  reads stuff from in and writes to channel till fd is dead
-	ml.ld("Starting in outReadLoop for", c)
-	defer ml.ld("exiting outReadLoop for", c)
+	ml.ls("Starting in outReadLoop for", c)
+	defer ml.ls("exiting outReadLoop for", c)
 	defer c.doneWithConn()
 	for {
 		var n int
@@ -381,7 +387,7 @@ func (c *connection) outReadLoop() {
 		if err == nil {
 			n, err = c.inConn.Read(buffer)
 		}
-		ml.ld("Read outReadLoop got", n, err)
+		ml.ln("Read outReadLoop got", n, err)
 		if err != nil {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-out-timeout")
@@ -394,7 +400,7 @@ func (c *connection) outReadLoop() {
 			count.Incr("read-out-zero")
 			continue
 		}
-		ml.ld("Got data out",
+		ml.ln("Got data out",
 			n,
 			string(buffer[0:n]),
 		)
@@ -410,7 +416,7 @@ func (c *connection) run() {
 	// get local address
 	la := c.inConn.LocalAddr()
 	ra := c.inConn.RemoteAddr()
-	ml.ld("LA", la, "RA", ra)
+	ml.ls("LA", la, "RA", ra)
 	if checkBan(ra) {
 		ml.la("ERROR: LocalAddr banned", ra)
 		c.inConn.Close()
@@ -420,18 +426,19 @@ func (c *connection) run() {
 	h, _ := hostPart(ra.String())
 	count.Incr("conn-from-" + h)
 	firstRead := make([]byte, 1024)
-	err := c.inConn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
+	err := c.inConn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)) // todo tunable
 	var n int
 	if err == nil {
 		n, err = c.inConn.Read(firstRead)
 	}
-	ml.ld("Got first read", string(firstRead[:n]))
+	ml.ln("Got first read", string(firstRead[:n]))
 	if err, ok := err.(net.Error); ok && err.Timeout() {
-		ml.ld("ERROR: First read on inbound got error or timeout", err)
-		count.Incr("read-in-timeout")
+		ml.ls("ERROR: First read on inbound got timeout", err)
+		count.Incr("read-in-first-timeout")
 		n = 0
 	} else if err != nil {
-		ml.la("ERROR: First read error", err)
+		ml.ls("ERROR: First read error", err)
+		count.Incr("read-in-first-error")
 		return
 	}
 	hasSNI := false
@@ -440,18 +447,18 @@ func (c *connection) run() {
 		// check for HTTP Host: header in http
 		dstHost, err = getHTTPHost(firstRead[:n])
 		if err != nil {
-			ml.ld("No Host Header:", err)
+			ml.ls("No Host Header:", err)
 			dstHost = ""
 		} else {
 			count.Incr("Host")
 			hasSNI = true // not technically but Host is like SNI
-			ml.ld("Got Host Header", dstHost)
+			ml.ls("Got Host Header", dstHost)
 		}
 
 	} else {
 		count.Incr("Sni")
 		hasSNI = true
-		ml.ld("Got SNI", dstHost)
+		ml.ls("Got SNI", dstHost)
 	}
 	// first get NAT address
 	dstPort := ""
@@ -460,7 +467,7 @@ func (c *connection) run() {
 		_, addr, newConn, err := getOriginalDst(&c.inConn)
 		if err == nil {
 			host, port := hostPart(addr)
-			ml.ld("Got NAT Addr:", host, port)
+			ml.ls("Got NAT Addr:", host, port)
 			dstHost = host
 			dstPort = port
 			count.Incr("NAT")
@@ -478,7 +485,7 @@ func (c *connection) run() {
 		count.Incr("direct-connect-" + rH)
 		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
 		if err != nil {
-			ml.ld("ERROR: connect out got err", err)
+			ml.ls("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("direct-connect-timeout")
@@ -491,7 +498,7 @@ func (c *connection) run() {
 			if c.outConn != nil {
 				c.outConn.Close()
 			}
-			ml.ld("Closed inConn")
+			ml.ls("Closed inConn")
 			return
 		}
 		c.state = up
@@ -508,31 +515,31 @@ func (c *connection) run() {
 		}()
 
 	} else {
-		ml.ld("Dial to", pH, pP)
+		ml.ls("Dial to", pH, pP)
 		count.Incr("proxy-connect")
 		count.Incr("proxy-connect-" + pH)
 		c.outConn, err = net.DialTimeout("tcp", pH+":"+pP, 15*time.Second)
 		if err != nil {
-			ml.ld("ERROR: connect out got err", err)
+			ml.ls("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("proxy-connect-timeout")
-				count.Incr("proxy-connect-timeout" + pH + pP)
+				count.Incr("proxy-connect-timeout-" + pH)
 			} else {
 				count.Incr("connect-out-error")
 				count.Incr("proxy-connect-error")
-				count.Incr("proxy-connect-error" + pH + pP)
+				count.Incr("proxy-connect-error" + pH)
 			}
 			c.inConn.Close()
 			if c.outConn != nil {
 				c.outConn.Close()
 			}
-			ml.ld("Closed inConn")
+			ml.ls("Closed inConn")
 			return
 		}
 		count.Incr("connect-out-good")
 		count.Incr("proxy-connect-good")
-		count.Incr("proxy-connect-good" + pH + pP)
+		count.Incr("proxy-connect-good-" + pH)
 		connS := fmt.Sprintf(
 			requestForConnect,
 			rH,
