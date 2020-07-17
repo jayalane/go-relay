@@ -111,7 +111,9 @@ func main() {
 				if err != nil {
 					count.Incr("accept-error")
 					ml.la("ERROR: accept failed", ln, err)
+					panic("Can't accpet -probably out of FDs")
 				}
+
 				count.Incr("accept-ok")
 				count.Incr("conn-chan-add")
 				theCtx.connChan <- initConn(*conn) // todo timeout
