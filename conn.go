@@ -26,7 +26,7 @@ type connection struct {
 	lock       sync.RWMutex
 	state      connState
 	inConn     net.TCPConn
-	outConn    net.Conn
+	outConn    *net.TCPConn
 	remoteHost string
 	remotePort string
 	outBound   chan []byte
@@ -192,6 +192,9 @@ func initConn(in net.TCPConn) *connection {
 	c.inBound = make(chan []byte, numBuffers)
 	c.lock = sync.RWMutex{}
 	c.state = waitingFor200
+	c.inConn.SetKeepAlive(true)
+	c.inConn.SetLinger(5)
+	c.inConn.SetNoDelay(true)
 	return &c
 }
 
@@ -483,7 +486,16 @@ func (c *connection) run() {
 	if pH == "" {
 		count.Incr("direct-connect")
 		count.Incr("direct-connect-" + rH)
-		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
+		cc, err := net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
+		tcpConn, ok := cc.(*net.TCPConn)
+		if ok {
+			c.outConn = tcpConn
+		} else {
+			ml.ls("ERROR: connect out got wrong type", err)
+			c.inConn.Close()
+			return
+		}
+
 		if err != nil {
 			ml.ls("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -501,6 +513,9 @@ func (c *connection) run() {
 			ml.ls("Closed inConn")
 			return
 		}
+		c.outConn.SetKeepAlive(true)
+		c.outConn.SetLinger(5)
+		c.outConn.SetNoDelay(true)
 		c.state = up
 		ml.la("Handling a direct connection",
 			c.inConn.RemoteAddr(),
@@ -518,7 +533,15 @@ func (c *connection) run() {
 		ml.ls("Dial to", pH, pP)
 		count.Incr("proxy-connect")
 		count.Incr("proxy-connect-" + pH)
-		c.outConn, err = net.DialTimeout("tcp", pH+":"+pP, 15*time.Second)
+		cc, err := net.DialTimeout("tcp", pH+":"+pP, 15*time.Second)
+		tcpConn, ok := cc.(*net.TCPConn)
+		if ok {
+			c.outConn = tcpConn
+		} else {
+			ml.ls("ERROR: connect out got wrong type", err)
+			c.inConn.Close()
+			return
+		}
 		if err != nil {
 			ml.ls("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
