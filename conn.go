@@ -469,24 +469,24 @@ func (c *connection) run() {
 		c.lock.Unlock()
 	}
 	rH, rP := getRealAddr(la, dstHost, dstPort)
-	hP, pP := getProxyAddr(la, rH, hasSNI)
+	pH, pP := getProxyAddr(la, rH, hasSNI)
 	c.remoteHost = rH
 	c.remotePort = rP
 	count.Incr("connect-out-remote-" + rH)
-	if hP == "" {
+	if pH == "" {
 		count.Incr("direct-connect")
-		count.Incr("direct-connect-" + rH + ":" + rP)
+		count.Incr("direct-connect-" + rH)
 		c.outConn, err = net.DialTimeout("tcp", rH+":"+rP, 15*time.Second)
 		if err != nil {
 			ml.ld("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("direct-connect-timeout")
-				count.Incr("direct-connect-timeout-" + rH + ":" + rP)
+				count.Incr("direct-connect-timeout-" + rH)
 			}
 			count.Incr("connect-out-error")
 			count.Incr("direct-connect-error")
-			count.Incr("direct-connect-error-" + rH + ":" + rP)
+			count.Incr("direct-connect-error-" + rH)
 			c.inConn.Close()
 			if c.outConn != nil {
 				c.outConn.Close()
@@ -508,20 +508,20 @@ func (c *connection) run() {
 		}()
 
 	} else {
-		ml.ld("Dial to", hP, pP)
+		ml.ld("Dial to", pH, pP)
 		count.Incr("proxy-connect")
-		count.Incr("proxy-connect-" + hP + pP)
-		c.outConn, err = net.DialTimeout("tcp", hP+":"+pP, 15*time.Second)
+		count.Incr("proxy-connect-" + pH)
+		c.outConn, err = net.DialTimeout("tcp", pH+":"+pP, 15*time.Second)
 		if err != nil {
 			ml.ld("ERROR: connect out got err", err)
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("connect-out-timeout")
 				count.Incr("proxy-connect-timeout")
-				count.Incr("proxy-connect-timeout" + hP + pP)
+				count.Incr("proxy-connect-timeout" + pH + pP)
 			} else {
 				count.Incr("connect-out-error")
 				count.Incr("proxy-connect-error")
-				count.Incr("proxy-connect-error" + hP + pP)
+				count.Incr("proxy-connect-error" + pH + pP)
 			}
 			c.inConn.Close()
 			if c.outConn != nil {
@@ -532,7 +532,7 @@ func (c *connection) run() {
 		}
 		count.Incr("connect-out-good")
 		count.Incr("proxy-connect-good")
-		count.Incr("proxy-connect-good" + hP + pP)
+		count.Incr("proxy-connect-good" + pH + pP)
 		connS := fmt.Sprintf(
 			requestForConnect,
 			rH,
