@@ -27,3 +27,7 @@ connections max.
 Commit 11de0c189812257a860e3bffce614148388b74a9 is first that will runs under 
 load for a pretty long time correctly.  Previous versions worked but had
 cass when they didn't close connections.  
+
+Commit 60ab102b50a3a441f5fdf548c088ebf67e6ac053 is pretty good, much
+less memory usage.  Still something not totally happy with Cloudera
+cluster managers.
