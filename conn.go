@@ -35,7 +35,6 @@ type connection struct {
 }
 
 const (
-	headerFor200      = "HTTP/1.1 200 Connection"
 	headerForHost     = "Host: "
 	httpNewLine       = "\r\n"
 	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\nX-Forwarded-For: %s\r\n\r\n"
@@ -50,6 +49,14 @@ func min(a int, b int) int {
 
 // utility functions
 
+// constHttp200Header returns a constant list of possible 200 status headers
+func constHTTP200Header() []string {
+	return []string{
+		"HTTP/1.0 200 Connection",
+		"HTTP/1.1 200 Connection",
+	}
+}
+
 // checkFor200 takes a buffer and sees if it was a successful
 // connect reply.  Returns the remainder (if any) and ok set to
 // true on success or '', false on failure
@@ -59,8 +66,10 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 	rest := -1
 	for i, s := range a {
 		if i == 0 {
-			if len(s) >= len(headerFor200) && s[0:len(headerFor200)] == headerFor200 {
-				ok = true
+			for _, head := range constHTTP200Header() {
+				if len(s) >= len(head) && s[0:len(head)] == head {
+					ok = true
+				}
 			}
 		}
 		if len(s) == 0 {
@@ -242,18 +251,22 @@ func (c *connection) inWriteLoop() {
 				len, err := c.inConn.Write(buffer[pos:total])
 				if len == 0 {
 					count.Incr("write-in-zero")
+					count.Incr("write-in-zero-" + c.remoteHost + ":" + c.remotePort)
 					ml.ls("Write in zero", err)
-					return
+					continue
 				}
 				if err != nil {
 					count.Incr("write-in-err")
+					count.Incr("write-in-err-" + c.remoteHost + ":" + c.remotePort)
 					ml.ls("Write in erro", err)
 					return
 				}
 				pos += len
 			}
 			count.IncrDelta("write-in-len", int64(total))
+			count.IncrDelta("write-in-len-"+c.remoteHost+":"+c.remotePort, int64(total))
 			count.Incr("write-in-ok")
+			count.Incr("write-in-ok-" + c.remoteHost + ":" + c.remotePort)
 			ml.ln("OK: sent in data",
 				total,
 				string(buffer[:total]),
@@ -283,16 +296,20 @@ func (c *connection) outWriteLoop() {
 				n, err := c.outConn.Write(buffer[pos:total])
 				if n == 0 {
 					count.Incr("write-out-zero")
-					return
+					count.Incr("write-out-zero-" + c.remoteHost + ":" + c.remotePort)
+					continue
 				}
 				if err != nil {
 					count.Incr("write-out-err")
+					count.Incr("write-out-err-" + c.remoteHost + ":" + c.remotePort)
 					return
 				}
 				pos += n
 			}
 			count.IncrDelta("write-out-len", int64(total))
+			count.IncrDelta("write-out-len-"+c.remoteHost+":"+c.remotePort, int64(total))
 			count.Incr("write-out-ok")
+			count.Incr("write-out-ok-" + c.remoteHost + ":" + c.remotePort)
 			ml.ln("OK: sent out data",
 				total,
 				string(buffer[:total]),
@@ -321,16 +338,17 @@ func (c *connection) inReadLoop() {
 		if err != nil { // including read timeouts
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-in-timeout")
+				count.Incr("read-in-timeout-" + c.remoteHost + ":" + c.remotePort)
 			} else {
 				count.Incr("read-in-read-err")
+				count.Incr("read-in-read-err-" + c.remoteHost + ":" + c.remotePort)
+				ml.ls("ERROR: inReadLoop got error", err)
 				return
 			}
-			count.Incr("read-in-err")
-			ml.ls("ERROR: inReadLoop got error", err)
-			return
 		}
 		if n == 0 {
 			count.Incr("read-in-zero")
+			count.Incr("read-in-zero-" + c.remoteHost + ":" + c.remotePort)
 			ml.ls("ERROR: inReadLoop got null read")
 			continue
 		}
@@ -370,7 +388,9 @@ func (c *connection) inReadLoop() {
 		}
 		c.lock.Unlock()
 		count.Incr("read-in-ok")
+		count.Incr("read-in-ok-" + c.remoteHost + ":" + c.remotePort)
 		count.IncrDelta("read-in-len", int64(n))
+		count.IncrDelta("read-in-len-"+c.remoteHost+":"+c.remotePort, int64(n))
 		ml.ln("Putting the buffer into inboud")
 		c.inBound <- buffer[0:n] //  to do non-blocking?
 	}
@@ -394,13 +414,16 @@ func (c *connection) outReadLoop() {
 		if err != nil {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-out-timeout")
+				count.Incr("read-out-timeout-" + c.remoteHost + ":" + c.remotePort)
 			} else {
 				count.Incr("read-out-read-err")
+				count.Incr("read-out-read-err-" + c.remoteHost + ":" + c.remotePort)
 				return
 			}
 		}
 		if n == 0 {
 			count.Incr("read-out-zero")
+			count.Incr("read-out-zero-" + c.remoteHost + ":" + c.remotePort)
 			continue
 		}
 		ml.ln("Got data out",
@@ -408,7 +431,9 @@ func (c *connection) outReadLoop() {
 			string(buffer[0:n]),
 		)
 		count.Incr("read-out-ok")
-		count.Incr("read-out-len")
+		count.Incr("read-out-ok-" + c.remoteHost + ":" + c.remotePort)
+		count.IncrDelta("read-out-len", int64(n))
+		count.IncrDelta("read-out-len"+c.remoteHost+":"+c.remotePort, int64(n))
 		c.outBound <- buffer[0:n] // to do non-blocking?
 	}
 }
