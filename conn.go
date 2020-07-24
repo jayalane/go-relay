@@ -257,17 +257,17 @@ func (c *connection) inWriteLoop() {
 			pos := 0
 			for pos < total {
 				len, err := c.inConn.Write(buffer[pos:total])
-				if len == 0 {
-					count.Incr("write-in-zero")
-					count.Incr("write-in-zero-" + c.remoteHost + ":" + c.remotePort)
-					ml.ls("Write in zero", err)
-					continue
-				}
 				if err != nil {
 					count.Incr("write-in-err")
 					count.Incr("write-in-err-" + c.remoteHost + ":" + c.remotePort)
 					ml.ls("Write in erro", err)
 					return
+				}
+				if len == 0 {
+					count.Incr("write-in-zero")
+					count.Incr("write-in-zero-" + c.remoteHost + ":" + c.remotePort)
+					ml.ls("Write in zero", err)
+					return // this has to be return twice I've made it continue and it loops infinitely
 				}
 				pos += len
 			}
@@ -306,15 +306,15 @@ func (c *connection) outWriteLoop() {
 			pos := 0
 			for pos < total {
 				n, err := c.outConn.Write(buffer[pos:total])
-				if n == 0 {
-					count.Incr("write-out-zero")
-					count.Incr("write-out-zero-" + c.remoteHost + ":" + c.remotePort)
-					continue
-				}
 				if err != nil {
 					count.Incr("write-out-err")
 					count.Incr("write-out-err-" + c.remoteHost + ":" + c.remotePort)
 					return
+				}
+				if n == 0 {
+					count.Incr("write-out-zero")
+					count.Incr("write-out-zero-" + c.remoteHost + ":" + c.remotePort)
+					return // keep as return continue breaks things
 				}
 				pos += n
 			}
