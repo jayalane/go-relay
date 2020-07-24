@@ -32,7 +32,8 @@ Commit 60ab102b50a3a441f5fdf548c088ebf67e6ac053 is pretty good, much
 less memory usage.  Still something not totally happy with Cloudera
 cluster managers.
 
-Commit f802b1b58f10873b65128f1725c2dcbdc2dfd34c fixes an FD leak
+Commit 50232e28f15d5685324dda31319de7f49998f2a5 fixes an FD leak
 (blocking in the channel for writes blocks forever when the connection
 is torn down; added a writesDone channel that is also selected for and
-causes writing go-routines to exit.  Also per-endpoint stats.  
+causes writing go-routines to exit.  Also per-endpoint stats.  And a
+regression on infinite loops on close write fd.
