@@ -29,6 +29,7 @@ type connection struct {
 	outConn    *net.TCPConn
 	remoteHost string
 	remotePort string
+	writesDone chan bool
 	outBound   chan []byte
 	inBound    chan []byte
 	// may need state later on
@@ -199,6 +200,7 @@ func initConn(in net.TCPConn) *connection {
 	numBuffers := theConfig["numBuffers"].IntVal
 	c.outBound = make(chan []byte, numBuffers)
 	c.inBound = make(chan []byte, numBuffers)
+	c.writesDone = make(chan bool, 5)
 	c.lock = sync.RWMutex{}
 	c.state = waitingFor200
 	c.inConn.SetKeepAlive(true)
@@ -219,6 +221,8 @@ func (c *connection) doneWithConn() {
 		count.Incr("connection-pairing-dup-close")
 		return
 	}
+	c.writesDone <- true
+	c.writesDone <- true
 	count.Incr("connection-pairing-closed")
 	count.Decr("connection-pairing")
 	c.state = closed
@@ -238,6 +242,10 @@ func (c *connection) inWriteLoop() {
 	defer c.doneWithConn()
 	for {
 		select {
+		case done, ok := <-c.writesDone:
+			ml.ls("Writes done", done, ok)
+			count.Incr("write-in-done")
+			return
 		case buffer, ok := <-c.inBound:
 			if !ok {
 				ml.ls("Write in continuing not ok", ok)
@@ -283,6 +291,10 @@ func (c *connection) outWriteLoop() {
 	defer c.doneWithConn()
 	for {
 		select {
+		case done, ok := <-c.writesDone:
+			ml.ls("Writes done", done, ok)
+			count.Incr("write-out-done")
+			return
 		case buffer, ok := <-c.outBound:
 			if !ok {
 				ml.ls("Returning from outWriteLoop", ok)
