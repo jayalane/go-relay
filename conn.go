@@ -333,17 +333,17 @@ func (c *connection) outWriteLoop() {
 // inReadLoop (for inboud) reads from the far end and sticks into a
 // channel
 func (c *connection) inReadLoop() {
-	//	log.Println("Starting inReadLoop for", c)
-	//defer log.Println("exiting inReadLoop for", c)
+	ml.ls("Starting inReadLoop for", c)
+	defer ml.ls("exiting inReadLoop for", c)
 
 	//  reads stuff from out and writes to channel till fd is dead
 	defer c.doneWithConn()
 	for {
 		var n int
 		var buffer []byte = make([]byte, 65536)
-		err := c.outConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
+		err := c.outConn.SetReadDeadline(time.Now().Add(time.Second * 1))
 		if err == nil {
-			// log.Println("About to call read for inReadLoop state", c.state)
+			ml.ls("About to call read for inReadLoop state", c.state)
 			n, err = c.outConn.Read(buffer)
 		}
 		ml.ln("inReadLoop got", n, err)
@@ -607,7 +607,11 @@ func (c *connection) run() {
 			rH,
 			ra.String(),
 		)
-		c.outConn.Write([]byte(connS))
+		if theConfig["sendConnectCall"].BoolVal == true {
+			c.outConn.Write([]byte(connS))
+		} else {
+			c.state = up
+		}
 		ml.la("Handling a connection", c.inConn.RemoteAddr(), connS)
 	}
 	// and stage the fristRead data

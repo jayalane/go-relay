@@ -21,6 +21,7 @@ ports = 5999
 isNAT = true
 debugLevel = debug
 # debug, all or none
+sendConnectLines = true
 squidHost = localhost
 squidPort = 3128
 destPortOverride = 
