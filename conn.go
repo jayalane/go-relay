@@ -351,6 +351,7 @@ func (c *connection) inReadLoop() {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-in-timeout")
 				count.Incr("read-in-timeout-" + c.remoteHost + ":" + c.remotePort)
+				continue
 			} else {
 				count.Incr("read-in-read-err")
 				count.Incr("read-in-read-err-" + c.remoteHost + ":" + c.remotePort)
@@ -427,6 +428,7 @@ func (c *connection) outReadLoop() {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				count.Incr("read-out-timeout")
 				count.Incr("read-out-timeout-" + c.remoteHost + ":" + c.remotePort)
+				continue
 			} else {
 				count.Incr("read-out-read-err")
 				count.Incr("read-out-read-err-" + c.remoteHost + ":" + c.remotePort)
@@ -502,19 +504,23 @@ func (c *connection) run() {
 	}
 	// first get NAT address
 	dstPort := ""
-	if dstHost == "" && theConfig["isNAT"].BoolVal {
-		c.lock.Lock()
-		_, addr, newConn, err := getOriginalDst(&c.inConn)
-		if err == nil {
-			host, port := hostPart(addr)
-			ml.ls("Got NAT Addr:", host, port)
-			dstHost = host
-			dstPort = port
-			count.Incr("NAT")
-		}
-		c.inConn = *newConn // even in err case
-		c.lock.Unlock()
+	host := ""
+	port := ""
+	c.lock.Lock()
+	_, addr, newConn, err := getOriginalDst(&c.inConn) // read NAT stuff
+	if err == nil {
+		host, port = hostPart(addr)
+		ml.ls("Got NAT Addr:", host, port)
+		count.Incr("NAT")
 	}
+	c.inConn = *newConn // even in err case
+	c.lock.Unlock()
+	if dstHost == "" && theConfig["isNAT"].BoolVal {
+		dstHost = port
+	} else {
+		dstPort = "443" // hmm what should this be?
+	}
+	dstPort = port
 	rH, rP := getRealAddr(la, dstHost, dstPort)
 	pH, pP := getProxyAddr(la, rH, hasSNI)
 	c.remoteHost = rH
