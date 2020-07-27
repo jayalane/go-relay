@@ -343,9 +343,9 @@ func (c *connection) inReadLoop() {
 	for {
 		var n int
 		var buffer []byte = make([]byte, 65536)
-		err := c.outConn.SetReadDeadline(time.Now().Add(time.Second * 1))
+		err := c.outConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
 		if err == nil {
-			ml.ls("About to call read for inReadLoop state", c.state)
+			ml.ls("About to call read for inReadLoop state", c.state, c)
 			n, err = c.outConn.Read(buffer)
 		}
 		ml.ln("inReadLoop got", n, err)
@@ -369,6 +369,7 @@ func (c *connection) inReadLoop() {
 		}
 
 		ml.ln("Got data in",
+			c,
 			c.state,
 			n,
 			string(buffer[0:n]),
@@ -616,7 +617,7 @@ func (c *connection) run() {
 			rH,
 			ra.String(),
 		)
-		if theConfig["sendConnectCall"].BoolVal == true {
+		if theConfig["sendConnectLines"].BoolVal == true {
 			c.outConn.Write([]byte(connS))
 		} else {
 			c.state = up
