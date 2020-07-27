@@ -114,6 +114,7 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 // for the CONNECT call - maybe via zone xfer?
 func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	h, port := hostPart(na.String())
+	ml.ls("Checking for real addr", na, sni, sniPort)
 	if theConfig["destPortOverride"].StrVal != "" {
 		port = theConfig["destPortOverride"].StrVal
 	} else {
@@ -125,6 +126,7 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	if theConfig["destHostOverride"].StrVal != "" {
 		return theConfig["destHostOverride"].StrVal, port
 	}
+	ml.ls("Checking for real addr going with ", na, sni, sniPort, h, port)
 	return h, port
 
 }
