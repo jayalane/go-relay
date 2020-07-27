@@ -518,7 +518,8 @@ func (c *connection) run() {
 	c.inConn = *newConn // even in err case
 	c.lock.Unlock()
 	if dstHost == "" && theConfig["isNAT"].BoolVal {
-		dstHost = port
+		dstPort = port
+		dstHost = host
 	} else {
 		dstPort = "443" // hmm what should this be?
 	}
