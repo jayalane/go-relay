@@ -24,6 +24,7 @@ type lll struct {
 
 var initOnceDone int64 = 0
 
+// initOnce nees to be called to get log rotation going
 func initOnce() {
 	if atomic.LoadInt64(&initOnceDone) == 1 {
 		return
@@ -49,11 +50,9 @@ func initOnce() {
 
 }
 
-func initLll(modName string, level string) lll {
-	initOnce()
-	if len(modName) > 50 {
-		log.Panic("init_lll called with giant module name", modName)
-	}
+// lllSetLevel takes a low level logger and a level string and resets the log
+// level
+func lllSetLevel(res *lll, level string) {
 	var theLev int
 	if level == "network" {
 		theLev = network
@@ -64,10 +63,21 @@ func initLll(modName string, level string) lll {
 	} else {
 		theLev = all
 	}
-	res := lll{module: modName, level: theLev}
+	res.level = theLev
+}
+
+// initLll takes a module name and a level string and returns a logger
+func initLll(modName string, level string) lll {
+	initOnce()
+	if len(modName) > 50 {
+		log.Panic("init_lll called with giant module name", modName)
+	}
+	res := lll{module: modName, level: all}
+	lllSetLevel(&res, level)
 	return res
 }
 
+// ln is Log Network - most volumunous
 func (ll lll) ln(ls ...interface{}) {
 	if ll.level > network {
 		return
@@ -75,6 +85,7 @@ func (ll lll) ln(ls ...interface{}) {
 	log.Println(ls...)
 }
 
+// ls is Log State - TCP reads/writes (but not what), accept/close
 func (ll lll) ls(ls ...interface{}) {
 	if ll.level > state {
 		return
@@ -82,6 +93,7 @@ func (ll lll) ls(ls ...interface{}) {
 	log.Println(ls...)
 }
 
+// la is Log Always - Listens, serious errors, etc.
 func (ll lll) la(ls ...interface{}) {
 	if ll.level > all {
 		return
