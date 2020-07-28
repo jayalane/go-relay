@@ -98,14 +98,14 @@ func hostPart(ad string) (string, string) {
 // getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 	if isSNI {
-		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
+		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
 	}
 	ip := net.ParseIP(dst)
 	ml.ls("Checking for squid", na, dst, ip, theCtx.relayCidr)
 	if theCtx.relayCidr == nil || theCtx.relayCidr.Contains(ip) {
 		// if no config, always use squid
 		ml.ls("Checks ok use squid ", ip, theCtx.relayCidr)
-		return theConfig["squidHost"].StrVal, theConfig["squidPort"].StrVal
+		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
 	}
 	return "", ""
 }
@@ -115,16 +115,16 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	h, port := hostPart(na.String())
 	ml.ls("Checking for real addr", na, sni, sniPort)
-	if theConfig["destPortOverride"].StrVal != "" {
-		port = theConfig["destPortOverride"].StrVal
+	if (*theConfig)["destPortOverride"].StrVal != "" {
+		port = (*theConfig)["destPortOverride"].StrVal
 	} else {
 		port = sniPort
 	}
 	if sni != "" {
 		return sni, port
 	}
-	if theConfig["destHostOverride"].StrVal != "" {
-		return theConfig["destHostOverride"].StrVal, port
+	if (*theConfig)["destHostOverride"].StrVal != "" {
+		return (*theConfig)["destHostOverride"].StrVal, port
 	}
 	ml.ls("Checking for real addr going with ", na, sni, sniPort, h, port)
 	return h, port
@@ -159,9 +159,9 @@ func parseCidr(cidr **net.IPNet, cidrStr string) {
 func initConnCtx() {
 
 	// setup CIDR to use tunnel/direct NAT decision
-	parseCidr(&theCtx.relayCidr, theConfig["destCidrUseSquid"].StrVal)
+	parseCidr(&theCtx.relayCidr, (*theConfig)["destCidrUseSquid"].StrVal)
 	// setup CIDR to block local calls
-	parseCidr(&theCtx.banCidr, theConfig["srcCidrBan"].StrVal)
+	parseCidr(&theCtx.banCidr, (*theConfig)["srcCidrBan"].StrVal)
 
 }
 
@@ -183,12 +183,12 @@ func getHTTPHost(data []byte) (string, error) {
 // handleConn is a long lived go routine to get connections from listener
 func handleConn() {
 
-	// taking from main loop - lots of these
+	// taking from main loop - starts a go routine per connection
 	for {
 		select {
 		case c := <-theCtx.connChan:
 			count.Incr("conn-chan-remove")
-			c.run() // have to think the data flow here
+			go c.run()
 		case <-time.After(60 * time.Second):
 			count.Incr("conn-chan-idle")
 		}
@@ -199,7 +199,7 @@ func handleConn() {
 // returns an initialized connection
 func initConn(in net.TCPConn) *connection {
 	c := connection{inConn: in}
-	numBuffers := theConfig["numBuffers"].IntVal
+	numBuffers := (*theConfig)["numBuffers"].IntVal
 	c.outBound = make(chan []byte, numBuffers)
 	c.inBound = make(chan []byte, numBuffers)
 	c.writesDone = make(chan bool, 5)
@@ -518,7 +518,7 @@ func (c *connection) run() {
 	}
 	c.inConn = *newConn // even in err case
 	c.lock.Unlock()
-	if dstHost == "" && theConfig["isNAT"].BoolVal {
+	if dstHost == "" && (*theConfig)["isNAT"].BoolVal {
 		dstPort = port
 		dstHost = host
 	} else {
@@ -617,7 +617,7 @@ func (c *connection) run() {
 			rH,
 			ra.String(),
 		)
-		if theConfig["sendConnectLines"].BoolVal == true {
+		if (*theConfig)["sendConnectLines"].BoolVal == true {
 			c.outConn.Write([]byte(connS))
 		} else {
 			c.state = up

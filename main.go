@@ -10,12 +10,14 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 var ml lll
-var theConfig config.Config
+var theConfig *config.Config
 var defaultConfig = `#
 ports = 5999
 isNAT = true
@@ -38,11 +40,31 @@ srcCidrBan = 127.0.0.0/8
 type context struct {
 	connChan  chan *connection // fed by listener
 	done      chan bool
-	relayCidr *net.IPNet // in the cidr gets tunnel, out gets direct connect
-	banCidr   *net.IPNet // blocks from this cidr to avoid routing calling loops
+	reload    chan os.Signal // to reload config
+	relayCidr *net.IPNet     // in the cidr gets tunnel, out gets direct connect
+	banCidr   *net.IPNet     // blocks from this cidr to avoid routing calling loops
 }
 
 var theCtx context
+
+func reloadHandler() {
+	for {
+		select {
+		case c := <-theCtx.reload:
+			ml.la("OK: Got a signal, reloading config", c)
+
+			(*theConfig) = nil
+			t, err := config.ReadConfig("config.txt", defaultConfig)
+			if err != nil {
+				fmt.Println("Error opening config.txt", err.Error())
+				return
+			}
+			theConfig = &t                          // is this atomic?
+			fmt.Println("New Config", (*theConfig)) // lll isn't up yet
+			lllSetLevel(&ml, (*theConfig)["debugLevel"].StrVal)
+		}
+	}
+}
 
 func main() {
 
@@ -52,44 +74,51 @@ func main() {
 		return
 	}
 	// still config
-	var err error
-	theConfig, err = config.ReadConfig("config.txt", defaultConfig)
-	fmt.Println("Config", theConfig) // lll isn't up yet
+	theConfig = nil
+	t, err := config.ReadConfig("config.txt", defaultConfig)
 	if err != nil {
 		fmt.Println("Error opening config.txt", err.Error())
 		if theConfig == nil {
 			os.Exit(11)
 		}
 	}
+	theConfig = &t
+	fmt.Println("Config", (*theConfig)) // lll isn't up yet
+
 	// low level logging (first so everything rotates)
-	ml = initLll("PROXY", theConfig["debugLevel"].StrVal)
+	ml = initLll("PROXY", (*theConfig)["debugLevel"].StrVal)
+
+	// config sig handlers - to enable log levels
+	theCtx.reload = make(chan os.Signal, 2)
+	signal.Notify(theCtx.reload, syscall.SIGHUP)
+	go reloadHandler() // to listen to the signal
 
 	// stats
 	count.InitCounters()
 
 	// init the globals
-	numConnHand := theConfig["numConnectionHandler"].IntVal
+	numConnHand := (*theConfig)["numConnectionHandler"].IntVal
 	theCtx.connChan = make(chan *connection, numConnHand)
 	theCtx.done = make(chan bool, 1)
-	fmt.Println("Cidrs", theConfig["destCidrUseSquid"].StrVal)
-	fmt.Println("Cidrs", theConfig["srcCidrBan"].StrVal)
+	fmt.Println("Cidrs", (*theConfig)["destCidrUseSquid"].StrVal)
+	fmt.Println("Cidrs", (*theConfig)["srcCidrBan"].StrVal)
 	initConnCtx()
 
 	// start go routines
-	for i := 0; i < theConfig["numConnectionHandlers"].IntVal; i++ {
+	for i := 0; i < (*theConfig)["numConnectionHandlers"].IntVal; i++ {
 		go handleConn()
 	}
 
 	// start the profiler
 	go func() {
-		if len(theConfig["profListen"].StrVal) > 0 {
-			ml.la(http.ListenAndServe(theConfig["profListen"].StrVal, nil))
+		if len((*theConfig)["profListen"].StrVal) > 0 {
+			ml.la(http.ListenAndServe((*theConfig)["profListen"].StrVal, nil))
 		}
 	}()
 
 	// listen
 	oneListen := false
-	for _, p := range strings.Split(theConfig["ports"].StrVal, ",") {
+	for _, p := range strings.Split((*theConfig)["ports"].StrVal, ",") {
 		port, err := strconv.Atoi(p)
 		if err != nil {
 			count.Incr("listen-error")
@@ -114,7 +143,6 @@ func main() {
 					ml.la("ERROR: accept failed", ln, err)
 					panic("Can't accpet -probably out of FDs")
 				}
-
 				count.Incr("accept-ok")
 				count.Incr("conn-chan-add")
 				theCtx.connChan <- initConn(*conn) // todo timeout
