@@ -37,3 +37,7 @@ Commit 50232e28f15d5685324dda31319de7f49998f2a5 fixes an FD leak
 is torn down; added a writesDone channel that is also selected for and
 causes writing go-routines to exit.  Also per-endpoint stats.  And a
 regression on infinite loops on close write fd.
+
+Starting with commit 2cac348a5cf5f2b11a3cba98ecdcbaf66c46f0fd and
+until 20b7fe05ec2ed8bd4e0f0692d3569d882a3f6e11 there was a regression.
+Working good now.  Haven't tested HUP re-config outside of laptop yet.
