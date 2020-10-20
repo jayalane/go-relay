@@ -615,7 +615,7 @@ func (c *connection) run() {
 			rH,
 			rP,
 			rH,
-			theConfig["requestHeaderAgentForConnect"].StrVal,
+			(*theConfig)["requestHeaderAgentForConnect"].StrVal,
 			ra.String(),
 		)
 		if (*theConfig)["sendConnectLines"].BoolVal == true {
