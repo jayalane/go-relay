@@ -38,7 +38,7 @@ type connection struct {
 const (
 	headerForHost     = "Host: "
 	httpNewLine       = "\r\n"
-	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Go-http-client/1.0\r\nX-Forwarded-For: %s\r\n\r\n"
+	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\nX-Forwarded-For: %s\r\n\r\n"
 )
 
 func min(a int, b int) int {
@@ -78,7 +78,7 @@ func checkFor200(n int, buf []byte) ([]byte, bool) {
 		}
 	}
 	if ok {
-		var res []byte = []byte("")
+		var res = []byte("")
 		if rest < len(a) {
 			res = []byte(strings.Join(a[rest:], httpNewLine))
 		}
@@ -342,7 +342,7 @@ func (c *connection) inReadLoop() {
 	defer c.doneWithConn()
 	for {
 		var n int
-		var buffer []byte = make([]byte, 65536)
+		var buffer = make([]byte, 65536)
 		err := c.outConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
 		if err == nil {
 			ml.ls("About to call read for inReadLoop state", c.state, c)
@@ -421,7 +421,7 @@ func (c *connection) outReadLoop() {
 	defer c.doneWithConn()
 	for {
 		var n int
-		var buffer []byte = make([]byte, 65536)
+		var buffer = make([]byte, 65536)
 		err := c.inConn.SetReadDeadline(time.Now().Add(time.Minute * 15))
 		if err == nil {
 			n, err = c.inConn.Read(buffer)
@@ -615,6 +615,7 @@ func (c *connection) run() {
 			rH,
 			rP,
 			rH,
+			theConfig["requestHeaderAgentForConnect"].StrVal,
 			ra.String(),
 		)
 		if (*theConfig)["sendConnectLines"].BoolVal == true {

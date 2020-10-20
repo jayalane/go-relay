@@ -33,6 +33,7 @@ numConnectionHandlers = 3
 numBuffers = 100
 profListen = localhost:6060
 srcCidrBan = 127.0.0.0/8
+requestHeaderAgentForConnect = Go-http-client/1.0
 # comments
 `
 
