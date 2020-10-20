@@ -22,7 +22,7 @@ type lll struct {
 	level  int
 }
 
-var initOnceDone int64 = 0
+var initOnceDone int64
 
 // initOnce nees to be called to get log rotation going
 func initOnce() {
