@@ -10,19 +10,15 @@ needs nat on it, something like:
     iptables -t nat -A PREROUTING -p tcp --dport 22 --to-port 6000
 ```
 
-This currently is just hard coded to us my squid on my laptop to ssh
-to my Linode.  Once I get a way to map the real IPs I will be getting
-to hostnames (that my squid config allows), I'll add some mapping
-between the local address on the socket, which I think will be the out
-on the internet address of the real destination and host names (that
-can be used in the CONNECT line and Host: line of the squid
-pre-amble).  If squid allows the CONNECT, then it just glues the bytes
-together.
+It reads the address from Host: line, SNI in the TLS handshake, or
+lastely, the original destination in the pre-NAT local address.  SNI
+and Host are preferred as our squid config is DNS based.  
 
 Went with just 4 go-routines per connection-pair, one each to read
 from each connection and one each to write to each connection.  I
 don't think this will be very high volume, probably few thousand
-connections max.  
+connections max.  (Tho docker pulls do crank up the size of each
+flow.)
 
 Commit 11de0c189812257a860e3bffce614148388b74a9 is first that will runs under 
 load for a pretty long time correctly.  Previous versions worked but had
@@ -40,4 +36,10 @@ regression on infinite loops on close write fd.
 
 Starting with commit 2cac348a5cf5f2b11a3cba98ecdcbaf66c46f0fd and
 until 20b7fe05ec2ed8bd4e0f0692d3569d882a3f6e11 there was a regression.
-Working good now.  Haven't tested HUP re-config outside of laptop yet.
+Working good now.  HUP reloads logging config, tested.
+
+For UDP, it expects to talk to a squid proxy and CONNECT to a copy of
+./server that is an gRPC server proxying UDP.  The state tracking
+of sender/receiver pairs is all in the RPC server, the transproxy is
+stateless.  
+
