@@ -23,9 +23,8 @@ var defaultConfig = `#
 ports = 5999
 udpPorts = 53
 isNAT = true
-debugLevel = debug
-# all for only "All" level logging, network for alll network traffic,
-# debug for debugging handling the network traffic
+debugLevel = network
+# network, state, always, or none
 sendConnectLines = true
 squidHost = localhost
 squidPort = 3128
