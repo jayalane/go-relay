@@ -28,6 +28,8 @@ debugLevel = network
 sendConnectLines = true
 squidHost = localhost
 squidPort = 3128
+uproxyHost = localhost
+uproxyPort = 8080
 destPortOverride = 
 destHostOverride = 
 destCidrUseSquid = 0.0.0.0/0
@@ -44,16 +46,16 @@ udpPorts = 5999
 `
 
 // global state
-type context struct {
+type serverContext struct {
 	tcpConnChan chan *tcpConn // fed by listener
-	udpConnChan chan *udpConn // fed by reader
+	udpMsgChan  chan *udpMsg  // fed by reader
 	done        chan bool
 	reload      chan os.Signal // to reload config
 	relayCidr   *net.IPNet     // in the cidr gets tunnel, out gets direct connect
 	banCidr     *net.IPNet     // blocks from this cidr to avoid routing calling loops
 }
 
-var theCtx context
+var theCtx serverContext
 
 func reloadHandler() {
 	for {
@@ -110,7 +112,7 @@ func main() {
 	numUDPConnHand := (*theConfig)["numUdpConnHandlers"].IntVal
 	// this is illogical coupling between # go routines and buffer size
 	theCtx.tcpConnChan = make(chan *tcpConn, numTCPConnHand)
-	theCtx.udpConnChan = make(chan *udpConn, numUDPConnHand)
+	theCtx.udpMsgChan = make(chan *udpMsg, numUDPConnHand)
 	theCtx.done = make(chan bool, 1)
 	fmt.Println("Cidrs", (*theConfig)["destCidrUseSquid"].StrVal)
 	fmt.Println("Cidrs", (*theConfig)["srcCidrBan"].StrVal)
@@ -124,10 +126,10 @@ func main() {
 	}()
 
 	// tcp listen
-	tcpHandler()
+	startTCPHandler()
 
 	// udp too now
-	udpHandler()
+	startUDPHandler()
 
 	// waiting till done - just wait forever I think
 	ml.La("Waiting...")
