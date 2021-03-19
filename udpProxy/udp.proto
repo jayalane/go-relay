@@ -1,18 +1,19 @@
 syntax = "proto3";
 
-option go_package = ".;udpProxy";
-
 package udpProxy;
+
+option go_package = ".;github_com_jayalane_go_relay_udpProxy";
 
 service Proxy {
   rpc SendMsgs (stream UdpMsg) returns (stream UdpMsg) {}
 }
 
 message UdpMsg {
-  uint32  srcIp   = 1;
-  uint32  srcPort = 2;  // protobufs lacks int16 - varint all round
-  uint32  dstIp   = 3;
-  uint32  dstPort = 4;
+  string  srcIp   = 1;  // they are strings from net package IPv6 safe?
+  
+  string  srcPort = 2; 
+  string  dstIp   = 3;
+  string  dstPort = 4;
   bytes  msg     = 5;  // len is in the wire protocol
 }
 

@@ -150,7 +150,6 @@ func checkBan(la net.Addr) bool {
 
 // parseCidr checks cidrStr and does error handling/logging
 func parseCidr(cidr **net.IPNet, cidrStr string) {
-	fmt.Println("Got here 0")
 	_, aCidr, err := net.ParseCIDR(cidrStr)
 	ml.La("Parsing", cidrStr, aCidr, err)
 	if err == nil {
@@ -187,7 +186,7 @@ func getHTTPHost(data []byte) (string, error) {
 }
 
 // tcpHandler sets up the listens and a goroutine for accepting
-func tcpHandler() {
+func startTCPHandler() {
 	oneListen := false
 	for _, p := range strings.Split((*theConfig)["ports"].StrVal, ",") {
 		port, err := strconv.Atoi(p)
