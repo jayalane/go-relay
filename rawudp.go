@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	pb "github.com/jayalane/go-relay/udpProxy"
 	"golang.org/x/sys/unix"
 	"net"
 	"runtime"
@@ -90,45 +91,49 @@ func (u *udphdr) checksum(ip *iphdr, payload []byte) {
 	u.csum = checksum(b.Bytes())
 }
 
-func sendRaw(m udpMsg) {
+func sendRaw(m *pb.UdpMsg) {
 	var err error
-	ml.La("Sending ", m.log())
-	ipSrcStr, udpSrcStr := hostPart(m.ra.String())
-	ipDstStr, udpDstStr := hostPart(m.la.String())
+	ml.La("Sending ", m)
+
+	ipSrcStr := m.SrcIp
+	udpSrcStr := m.SrcPort
 	srcPort, err := strconv.Atoi(udpSrcStr)
 	if err != nil {
-		ml.Ls("invalid source port:", m.log(), udpSrcStr)
+		ml.Ls("invalid source port:", m, udpSrcStr)
 		return // oh well
 	}
+
+	ipDstStr := m.DstIp
+	udpDstStr := m.DstPort
 	dstPort, err := strconv.Atoi(udpDstStr)
 	if err != nil {
-		ml.Ls("invalid destination port:", m.log(), udpDstStr)
+		ml.Ls("invalid destination port:", m, udpDstStr)
 		return // oh well
 	}
 	udpSrc := uint(srcPort)
 	udpDst := uint(dstPort)
 
-	ipSrc := net.ParseIP("127.0.0.1")
+	ipSrc := net.ParseIP(ipSrcStr)
 	if ipSrc == nil {
-		ml.Ls("invalid source IP", m.log(), ipSrcStr)
+		ml.Ls("invalid source IP", m, ipSrcStr)
 		return
 	}
 	ipDst := net.ParseIP(ipDstStr)
 	if ipDst == nil {
-		ml.Ls("invalid destination IP", m.log(), ipDstStr)
+		ml.Ls("invalid destination IP", m, ipDstStr)
 		return
 	}
 
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_RAW)
 
 	if err != nil || fd < 0 {
-		ml.Ls("error creating a raw socket:", m.log(), err)
+		ml.Ls("error creating a raw socket:", m, err)
 		return
 	}
 
 	err = unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_HDRINCL, 1)
 	if err != nil {
-		ml.Ls("error enabling IP_HDRINCL:", m.log(), err)
+		ml.Ls("error enabling IP_HDRINCL:", m, err)
 		unix.Close(fd)
 		return
 	}
@@ -155,11 +160,11 @@ func sendRaw(m udpMsg) {
 	// the kernel will route the packet based on the IP header
 	addr := unix.SockaddrInet4{}
 
-	payload := m.buf[:m.n]
+	payload := m.Msg
 	udplen := 8 + len(payload)
 	totalLen := 20 + udplen
 	if totalLen > 0xffff {
-		ml.Ls("message is too large to fit into a packet:", m.log(), totalLen)
+		ml.Ls("message is too large to fit into a packet:", m, totalLen)
 		return
 	}
 	// the kernel will overwrite the IP checksum, so this is included just for
@@ -175,17 +180,17 @@ func sendRaw(m udpMsg) {
 	var b bytes.Buffer
 	err = binary.Write(&b, binary.BigEndian, &ip)
 	if err != nil {
-		ml.Ls("error encoding the IP header:", m.log(), err)
+		ml.Ls("error encoding the IP header:", m, err)
 		return
 	}
 	err = binary.Write(&b, binary.BigEndian, &udp)
 	if err != nil {
-		ml.Ls("error encoding the UDP header:", m.log(), err)
+		ml.Ls("error encoding the UDP header:", m, err)
 		return
 	}
 	err = binary.Write(&b, binary.BigEndian, &payload)
 	if err != nil {
-		ml.Ls("error encoding the payload", m.log(), err)
+		ml.Ls("error encoding the payload", m, err)
 		return
 	}
 	bb := b.Bytes()
@@ -200,13 +205,13 @@ func sendRaw(m udpMsg) {
 
 	err = unix.Sendto(fd, bb, 0, &addr)
 	if err != nil {
-		ml.Ls("error sending the packet:", m.log(), err)
+		ml.Ls("error sending the packet:", m, err)
 		return
 	}
-	ml.Ls("send bytes were sent", m.n)
+	ml.Ls("send bytes were sent", len(m.Msg))
 	err = unix.Close(fd)
 	if err != nil {
-		ml.Ls("error closing the socket:", m.log(), err)
+		ml.Ls("error closing the socket:", m, err)
 		return
 	}
 }
