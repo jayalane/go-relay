@@ -35,7 +35,6 @@ github.com/jayalane/go-counter v0.0.0-20210317224930-5dfe901a5bb2 h1:Kkbe7/iqUld
 github.com/jayalane/go-counter v0.0.0-20210317224930-5dfe901a5bb2/go.mod h1:pLGzyID12urCs9DlXRj1+L0KNPPfzDpbDAKRTCd+PGU=
 github.com/jayalane/go-lll v0.0.0-20210226204815-a749db371ada h1:dff3xp2Yxqn9rcqwynK8qHq9+oaEw1qwt77KLk7RikY=
 github.com/jayalane/go-lll v0.0.0-20210226204815-a749db371ada/go.mod h1:3N1QLl25lgCqNd1nfjG+K5bSYCVbEzlaWHixzl7Sxdc=
-github.com/jayalane/go-relay v0.0.0-20210318005545-1b1f0f22d61b h1:j2JsWRccTbPS9Rt22J3mW6b6zmMtADsr+YQIxAfCeF0=
 github.com/jayalane/go-tinyconfig v0.0.0-20190322222019-6686e8e45220 h1:Er+o6b1vEwUcersw5Tm1SPRHbKrNs6I8K1ZoTjDZ1uE=
 github.com/jayalane/go-tinyconfig v0.0.0-20190322222019-6686e8e45220/go.mod h1:To7/Wkt2vnh8ZC1mcRu0XB2Z4YCk+bRpHLdAn9DwZMw=
 github.com/jonboulle/clockwork v0.2.2 h1:UOGuzwb1PwsrDAObMuhUnj0p5ULPj8V/xJ7Kx9qUBdQ=
