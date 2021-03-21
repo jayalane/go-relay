@@ -3,10 +3,10 @@
 package main
 
 import (
-	//	"context"
+	"context"
 	"fmt"
 	count "github.com/jayalane/go-counter"
-	//	pb "github.com/jayalane/go-relay/udpProxy"
+	pb "github.com/jayalane/go-relay/udpProxy"
 	"google.golang.org/grpc"
 	"net"
 	"os"
@@ -37,11 +37,13 @@ func newUDP(in net.PacketConn) *udpMsg {
 //
 func startUDPHandler() {
 
-	// start the go routines that establish connections to the uproxy and
-	// funnel the msgs from the channel
-	// in bound msgs are just sent, not too much blocking.
-	for i := 0; i < (*theConfig)["numUdpConnHandlers"].IntVal; i++ {
-		go handleUDPProxy()
+	// this has a lot of comments as this was my thinking process
+
+	// start the go routines that establish connections to the uproxy
+	// and funnel the msgs from the channel in bound msgs are just sent,
+	// not too much blocking.
+	for i := 0; i < (*theConfig)["numUdpMsgHandlers"].IntVal; i++ {
+		go handleUDPProxy() // each one has 1 Proxy client
 	}
 	// start the go routines to listen to the network and
 	// send the out bound msgs to the channel
@@ -67,6 +69,7 @@ func startUDPHandler() {
 					count.Incr("udp-read-bad")
 					return // Not sure this is correct
 				}
+				ml.Ln("Got an outgoing UDP msg", buffer[:n])
 				count.Incr("udp-read-ok")
 				count.Incr("udp-read-chan-add")
 				theCtx.udpMsgChan <- &udpMsg{n, conn, la, ra, buffer}
@@ -75,43 +78,9 @@ func startUDPHandler() {
 	}
 }
 
-// handleUDPProxy opens connection to uproxy, and sends
-// UDP segments from the channel to the uproxy.
-// it also stats a reader for the uproxy which sends the
-// replies back to the network (no extra channel for that)
-func handleUDPProxy() {
-
-	go func() {
-		for {
-			select {
-			case c := <-theCtx.udpMsgChan:
-				count.Incr("read-udp-chan-remove")
-				ml.Ln("Got a msg", c.n, c.la, c.ra, c.conn, c.buf[:c.n])
-
-				//lHost, lPort := hostPart(c.la.String())
-				//				rHost, rPort := hostPart(c.ra.String())
-
-				/*				m := pb.UdpMsg{
-								SrcIp:   rHost,
-								SrcPort: rPort,
-								DstIp:   lHost,
-								DstPort: lPort,
-								Msg:     c.buf[:c.n],
-							}*/
-				//_ = stream.Send(&m) // network send, need to check for error
-				reply := udpMsg{
-					n:   2, // len(hi)
-					la:  c.ra,
-					ra:  c.la,
-					buf: []byte("hi")}
-				sendRaw(reply) // no error checking - some logging and will retry
-
-			case <-time.After(60 * time.Second):
-				count.Incr("read-udp-chan-idle")
-			}
-		}
-	}()
-
+// getProxyClient sets the environment variable to squid and
+// gets the gRPC client.
+func getProxyClient() (pb.ProxyClient, error) {
 	squidProxyStr := fmt.Sprintf("%s:%s", (*theConfig)["squidHost"].StrVal,
 		(*theConfig)["squidPort"].StrVal)
 
@@ -124,34 +93,88 @@ func handleUDPProxy() {
 		(*theConfig)["uproxyPort"].StrVal)
 
 	backOffDial := 10 * time.Millisecond
+	var cc grpc.ClientConnInterface
+	var err error
+
 	for {
 		// open a connection to the UDP gRPC server
 		// this is tricky because we need to use a Squid to reach the endpoint.
-
-		_, err := grpc.Dial(uproxyStr)
-		if err != nil {
-			// sleep?  reconnect? log.Fatalf("fail to dial: %v", err)
-			ml.Ls("uproxy connect failed", err)
-			if backOffDial < 60*time.Second {
-				backOffDial = backOffDial * 2
-			}
-			time.Sleep(backOffDial)
-			continue
+		ml.Ls("About to dial", uproxyStr)
+		cc, err = grpc.Dial(uproxyStr, grpc.WithInsecure())
+		if err == nil {
+			ml.Ls("Got connection", cc)
+			break
 		}
-		backOffDial = 10 * time.Millisecond
-		//defer conn.Close()
-		// udpClient := pb.NewProxyClient(conn)
-		//stream, err := udpClient.SendMsgs(context.Background())
-		//go func(s pb.Proxy_SendMsgsClient) {
-		//			for {
-		//				m, err := s.Recv()
-		//if err != nil {
-		//fmt.Print("Got this erro", err)
-		//return // close?
-		//}
-		//fmt.Print("Got this thing", m)
-		//}
-		//}(stream)
-
+		// sleep?  reconnect? log.Fatalf("fail to dial: %v", err)
+		ml.Ls("uproxy connect failed", err)
+		if backOffDial < 60*time.Second {
+			backOffDial = backOffDial * 2
+		}
+		time.Sleep(backOffDial)
 	}
+	ml.Ls("About to create new client")
+	udpClient := pb.NewProxyClient(cc)
+	ml.Ls("Got new client", udpClient)
+
+	return udpClient, nil
+}
+
+// handleUDPProxy opens connection to uproxy, and sends
+// UDP segments from the channel to the uproxy.
+// it also stats a reader for the uproxy which sends the
+// replies back to the network (no extra channel for that)
+func handleUDPProxy() {
+
+	done := make(chan bool, 1)
+
+	udpClient, err := getProxyClient() // apparently once this exists
+	// it lasts robustly
+	ml.La("Got here 0 client proxy", udpClient)
+	stream, err := udpClient.SendMsgs(context.Background())
+	ml.La("Got here got a stream", stream, err)
+	// start up a go routine to read outbound msgs from channel
+	// and send to the udpClient proxy
+	go func() {
+		ml.Ls("Started a listener for a gRPC proxy connection")
+		for {
+			select {
+			case c := <-theCtx.udpMsgChan:
+				count.Incr("read-udp-chan-remove")
+				ml.Ln("Got an outbound msg", c.log())
+
+				lHost, lPort := hostPart(c.la.String())
+				rHost, rPort := hostPart(c.ra.String())
+
+				m := pb.UdpMsg{
+					SrcIp:   rHost,
+					SrcPort: rPort,
+					DstIp:   lHost,
+					DstPort: lPort,
+					Msg:     c.buf[:c.n],
+				}
+				err = stream.Send(&m) // network send, need to check for error
+				if err != nil {
+					ml.La("Send failed", err)
+					// and ... ?
+				}
+				ml.La("Sent ok to proxy")
+			case <-time.After(60 * time.Second * 5):
+				count.Incr("read-udp-chan-idle")
+			}
+		}
+	}()
+	// start up a routine to read from the
+	go func(s pb.Proxy_SendMsgsClient) {
+		for {
+			m, err := s.Recv()
+			if err != nil {
+				ml.Ls("Proxy recv got this err", err)
+				//return // close?
+				continue // ? break  or new client?
+			}
+			fmt.Print("proxy recv go thing", m)
+			sendRaw(m) // no error checking - some logging and something external will retry
+		}
+	}(stream)
+	<-done
 }
