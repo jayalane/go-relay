@@ -34,13 +34,12 @@ destPortOverride =
 destHostOverride = 
 destCidrUseSquid = 0.0.0.0/0
 numTcpConnHandlers = 3
-numUdpConnHandlers = 3
+numUdpMsgHandlers = 3
 numBuffers = 100
 profListen = localhost:6060
 srcCidrBan = 127.0.0.0/8
 requestHeaderAgentForConnect = Go-http-client/1.0
 udpBufferSize = 8192
-numUdpMsgHandlers = 10  // really # of connections to gRPC proxies
 udpPorts = 5999
 # comments
 `
