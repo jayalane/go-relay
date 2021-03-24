@@ -100,7 +100,7 @@ func getProxyClient() (pb.ProxyClient, error) {
 		// open a connection to the UDP gRPC server
 		// this is tricky because we need to use a Squid to reach the endpoint.
 		ml.Ls("About to dial", uproxyStr)
-		cc, err = grpc.Dial(uproxyStr, grpc.WithInsecure())
+		cc, err = grpc.Dial(uproxyStr, grpc.WithBlock(), grpc.WithInsecure())
 		if err == nil {
 			ml.Ls("Got connection", cc)
 			break
@@ -127,9 +127,18 @@ func handleUDPProxy() {
 
 	done := make(chan bool, 1)
 
-	udpClient, err := getProxyClient() // apparently once this exists
+	var udpClient pb.ProxyClient
+	var err error
+	for {
+		udpClient, err = getProxyClient() // apparently once this exists
+		if err == nil {
+			break
+		}
+		ml.La("Error reaching uproxy gRPC", err)
+		time.Sleep(10 * time.Second)
+	}
+	ml.La("Got a gRPC client", udpClient)
 	// it lasts robustly
-	ml.La("Got here 0 client proxy", udpClient)
 	stream, err := udpClient.SendMsgs(context.Background())
 	ml.La("Got here got a stream", stream, err)
 	// start up a go routine to read outbound msgs from channel
@@ -144,7 +153,8 @@ func handleUDPProxy() {
 
 				lHost, lPort := hostPart(c.la.String())
 				rHost, rPort := hostPart(c.ra.String())
-
+				lPort = "1054"
+				lHost = "127.0.0.1"
 				m := pb.UdpMsg{
 					SrcIp:   rHost,
 					SrcPort: rPort,
@@ -169,10 +179,11 @@ func handleUDPProxy() {
 			m, err := s.Recv()
 			if err != nil {
 				ml.Ls("Proxy recv got this err", err)
+				time.Sleep(30 * time.Second)
 				//return // close?
 				continue // ? break  or new client?
 			}
-			fmt.Print("proxy recv go thing", m)
+			ml.Ln("proxy recv go thing", m)
 			sendRaw(m) // no error checking - some logging and something external will retry
 		}
 	}(stream)
