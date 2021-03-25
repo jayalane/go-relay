@@ -27,7 +27,7 @@ debugLevel = network
 # network, state, always, or none
 sendConnectLines = true
 squidHost = localhost
-squidPort = 3128
+squidPort = 4128
 uproxyHost = localhost
 uproxyPort = 8080
 destPortOverride = 
