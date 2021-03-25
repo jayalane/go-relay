@@ -127,6 +127,7 @@ func getProxyClient() (pb.ProxyClient, error) {
 				// extra data but we are ignoring it
 				ml.Ls("got 200 answer", ok2)
 				if !ok2 {
+					ml.Ln("Got this instead", string(buffer[:n]))
 					return nil, errors.New("rejected by proxy")
 				}
 				return conn, nil
