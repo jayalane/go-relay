@@ -53,6 +53,58 @@ func min(a int, b int) int {
 // tcpConn
 
 // utility functions
+func dialWithProxy(pH string, pP string,
+	rH string, rP string,
+	remoteAddr *net.Addr,
+	timeout time.Duration) (net.Conn, string, error) {
+	cc, err := net.DialTimeout("tcp", pH+":"+pP, timeout)
+	tcpConn, ok := cc.(*net.TCPConn)
+	var conn *net.TCPConn
+	if ok {
+		conn = tcpConn
+	} else {
+		ml.Ls("ERROR: connect out got wrong type", err)
+		return nil, "", errors.New("connect out got wrong type")
+	}
+	if err != nil {
+		ml.Ls("ERROR: connect out got err", err)
+		if err, ok := err.(net.Error); ok && err.Timeout() {
+			count.Incr("connect-out-timeout")
+			count.Incr("proxy-connect-timeout")
+			count.Incr("proxy-connect-timeout-" + pH)
+		} else {
+			count.Incr("connect-out-error")
+			count.Incr("proxy-connect-error")
+			count.Incr("proxy-connect-error" + pH)
+		}
+		if conn != nil {
+			conn.Close()
+		}
+		ml.Ls("Closed inConn")
+		return nil, "", err
+	}
+	count.Incr("connect-out-good")
+	count.Incr("proxy-connect-good")
+	count.Incr("proxy-connect-good-" + pH)
+	ra := ""
+	if remoteAddr == nil {
+		ra = "127.0.0.1"
+	} else {
+		ra = (*remoteAddr).String()
+	}
+	connS := fmt.Sprintf(
+		requestForConnect,
+		rH,
+		rP,
+		rH,
+		(*theConfig)["requestHeaderAgentForConnect"].StrVal,
+		ra,
+	)
+	if (*theConfig)["sendConnectLines"].BoolVal == true {
+		conn.Write([]byte(connS)) // check for error?
+	}
+	return conn, connS, nil
+}
 
 // constHttp200Header returns a constant list of possible 200 status headers
 func constHTTP200Header() []string {
@@ -642,7 +694,7 @@ func (c *tcpConn) run() {
 		ml.Ls("Dial to", pH, pP)
 		count.Incr("proxy-connect")
 		count.Incr("proxy-connect-" + pH)
-		cc, err := net.DialTimeout("tcp", pH+":"+pP, 15*time.Second)
+		cc, ConnS, err := dialWithProxy(pH, pP, rH, rP, &ra, 15*time.Second)
 		tcpConn, ok := cc.(*net.TCPConn)
 		if ok {
 			c.outConn = tcpConn
@@ -652,40 +704,15 @@ func (c *tcpConn) run() {
 			return
 		}
 		if err != nil {
-			ml.Ls("ERROR: connect out got err", err)
-			if err, ok := err.(net.Error); ok && err.Timeout() {
-				count.Incr("connect-out-timeout")
-				count.Incr("proxy-connect-timeout")
-				count.Incr("proxy-connect-timeout-" + pH)
-			} else {
-				count.Incr("connect-out-error")
-				count.Incr("proxy-connect-error")
-				count.Incr("proxy-connect-error" + pH)
-			}
 			c.inConn.Close()
+			ml.Ls("Closed inConn")
 			if c.outConn != nil {
 				c.outConn.Close()
 			}
-			ml.Ls("Closed inConn")
 			return
 		}
-		count.Incr("connect-out-good")
-		count.Incr("proxy-connect-good")
-		count.Incr("proxy-connect-good-" + pH)
-		connS := fmt.Sprintf(
-			requestForConnect,
-			rH,
-			rP,
-			rH,
-			(*theConfig)["requestHeaderAgentForConnect"].StrVal,
-			ra.String(),
-		)
-		if (*theConfig)["sendConnectLines"].BoolVal == true {
-			c.outConn.Write([]byte(connS))
-		} else {
-			c.state = up
-		}
-		ml.La("Handling a connection", c.inConn.RemoteAddr(), connS)
+		c.state = up
+		ml.La("Handling a connection", c.inConn.RemoteAddr(), ConnS)
 	}
 	// and stage the fristRead data
 	c.outBound <- firstRead[:n]

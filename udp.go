@@ -1,9 +1,9 @@
 // -*- tab-width: 2 -*-
-
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	count "github.com/jayalane/go-counter"
 	pb "github.com/jayalane/go-relay/udpProxy"
@@ -100,7 +100,38 @@ func getProxyClient() (pb.ProxyClient, error) {
 		// open a connection to the UDP gRPC server
 		// this is tricky because we need to use a Squid to reach the endpoint.
 		ml.Ls("About to dial", uproxyStr)
-		cc, err = grpc.Dial(uproxyStr, grpc.WithBlock(), grpc.WithInsecure())
+		cc, err = grpc.Dial(uproxyStr,
+			grpc.WithBlock(),
+			grpc.WithInsecure(),
+			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+				rH, rP, err := net.SplitHostPort(addr)
+				if err != nil {
+					ml.Ls("splithostport error", err, addr)
+					return nil, err
+				}
+				pH := (*theConfig)["squidHost"].StrVal
+				pP := (*theConfig)["squidPort"].StrVal
+				conn, _, err := dialWithProxy(pH, pP, rH, rP, nil, timeout)
+				if err != nil {
+					return nil, err
+				}
+				var n int
+				var buffer = make([]byte, 65536)
+				err = conn.SetReadDeadline(time.Now().Add(time.Minute * 15))
+				if err == nil {
+					ml.Ls("About to call first read for proxy")
+					n, err = conn.Read(buffer)
+				}
+				_, ok2 := checkFor200(n, buffer)
+				// I don't know if in gRPC the proxy connect can return
+				// extra data but we are ignoring it
+				ml.Ls("got 200 answer", ok2)
+				if !ok2 {
+					return nil, errors.New("rejected by proxy")
+				}
+				return conn, nil
+			}),
+		)
 		if err == nil {
 			ml.Ls("Got connection", cc)
 			break
@@ -153,8 +184,8 @@ func handleUDPProxy() {
 
 				lHost, lPort := hostPart(c.la.String())
 				rHost, rPort := hostPart(c.ra.String())
-				lPort = "1054"
-				lHost = "127.0.0.1"
+				lPort = "53"
+				lHost = "8.8.8.8"
 				m := pb.UdpMsg{
 					SrcIp:   rHost,
 					SrcPort: rPort,
