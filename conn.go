@@ -7,6 +7,7 @@ import (
 	"fmt"
 	count "github.com/jayalane/go-counter"
 	"github.com/paultag/sniff/parser"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -124,7 +125,10 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 		return sni, port
 	}
 	if (*theConfig)["destHostOverride"].StrVal != "" {
-		return (*theConfig)["destHostOverride"].StrVal, port
+		a := strings.Split((*theConfig)["destHostOverride"].StrVal, ",")
+		b := a[rand.Intn(len(a))]
+		ml.ls("Using random override", b)
+		return b, port
 	}
 	ml.ls("Checking for real addr going with ", na, sni, sniPort, h, port)
 	return h, port
