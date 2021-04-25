@@ -53,7 +53,7 @@ func min(a int, b int) int {
 // utility functions then go routines start then class methods for
 // tcpConn
 
-// utility functions
+// dialWithProxy dials out to the endpoint with a given proxy
 func dialWithProxy(pH string, pP string,
 	rH string, rP string,
 	remoteAddr *net.Addr,
@@ -155,9 +155,6 @@ func hostPart(ad string) (string, string) {
 
 // getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
-	if isSNI {
-		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
-	}
 	ip := net.ParseIP(dst)
 	ml.Ls("Checking for squid", na, dst, ip, theCtx.relayCidr)
 	if theCtx.relayCidr == nil || theCtx.relayCidr.Contains(ip) {
@@ -178,14 +175,14 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	} else {
 		port = sniPort
 	}
-	if sni != "" {
-		return sni, port
-	}
 	if (*theConfig)["destHostOverride"].StrVal != "" {
 		a := strings.Split((*theConfig)["destHostOverride"].StrVal, ",")
 		b := a[rand.Intn(len(a))]
 		ml.Ls("Using random override", b)
 		return b, port
+	}
+	if sni != "" {
+		return sni, port
 	}
 	ml.Ls("Checking for real addr going with ", na, sni, sniPort, h, port)
 	return h, port
@@ -278,6 +275,11 @@ func startTCPHandler() {
 	if !oneListen {
 		panic("No listens succeeded")
 	}
+	// start go routines
+	for i := 0; i < (*theConfig)["numTcpConnHandlers"].IntVal; i++ {
+		ml.La("Starting handleConn")
+		go handleConn()
+	}
 }
 
 // handleConn is a long lived go routine to get connections from listener
@@ -287,6 +289,7 @@ func handleConn() {
 	for {
 		select {
 		case c := <-theCtx.tcpConnChan:
+			fmt.Print("Read one accepted", c)
 			count.Incr("conn-chan-remove")
 			go c.run()
 		case <-time.After(60 * time.Second):
@@ -299,7 +302,7 @@ func handleConn() {
 // returns an initialized connection
 func newTCP(in net.TCPConn) *tcpConn {
 	c := tcpConn{inConn: in}
-	c.setIPTransparent()
+	//c.setIPTransparent()
 	numBuffers := (*theConfig)["numBuffers"].IntVal
 	c.outBound = make(chan []byte, numBuffers)
 	c.inBound = make(chan []byte, numBuffers)
@@ -311,6 +314,8 @@ func newTCP(in net.TCPConn) *tcpConn {
 	c.inConn.SetNoDelay(true)
 	return &c
 }
+
+// now the tcpConn class methods
 
 // doneWithConn closes everything safely when done
 // can be called multiple times
@@ -635,6 +640,14 @@ func (c *tcpConn) run() {
 	dstPort := ""
 	host := ""
 	port := ""
+	c.lock.Lock()
+	_, addr, newConn, err := getOriginalDst(&c.inConn) // read NAT stuff
+	if err == nil {
+		host, port = hostPart(addr)
+		ml.Ls("Got NAT Addr:", host, port)
+		count.Incr("NAT")
+	}
+	c.inConn = *newConn // even in err case
 	c.lock.Unlock()
 	if dstHost == "" && (*theConfig)["isNAT"].BoolVal {
 		dstPort = port
@@ -656,7 +669,7 @@ func (c *tcpConn) run() {
 		if ok {
 			c.outConn = tcpConn
 		} else {
-			ml.Ls("ERROR: connect out got wrong type", err)
+			ml.Ls("ERROR: connect out got wrong type", err, fmt.Sprintf("%T", cc))
 			c.inConn.Close()
 			return
 		}
@@ -703,7 +716,7 @@ func (c *tcpConn) run() {
 		if ok {
 			c.outConn = tcpConn
 		} else {
-			ml.Ls("ERROR: connect out got wrong type", err)
+			ml.Ls("ERROR: connect out got wrong type", err, fmt.Sprintf("%T", cc))
 			c.inConn.Close()
 			return
 		}
