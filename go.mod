@@ -1,6 +1,6 @@
 module github.com/jayalane/relay
 
-go 1.15
+go 1.16
 
 replace github.com/jayalane/go-relay/udpProxy => ./udpProxy
 
@@ -18,6 +18,6 @@ require (
 	github.com/lestrrat-go/strftime v1.0.4 // indirect
 	github.com/paultag/sniff v0.0.0-20200207005214-cf7e4d167732
 	github.com/pkg/errors v0.9.1 // indirect
-	golang.org/x/sys v0.0.0-20210324051608-47abb6519492
-	google.golang.org/grpc v1.36.0
+	golang.org/x/sys v0.0.0-20210423185535-09eb48e85fd7
+	google.golang.org/grpc v1.37.0
 )
