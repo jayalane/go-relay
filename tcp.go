@@ -184,7 +184,7 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	if (*theConfig)["destHostOverride"].StrVal != "" {
 		a := strings.Split((*theConfig)["destHostOverride"].StrVal, ",")
 		b := a[rand.Intn(len(a))]
-		ml.ls("Using random override", b)
+		ml.Ls("Using random override", b)
 		return b, port
 	}
 	ml.Ls("Checking for real addr going with ", na, sni, sniPort, h, port)
