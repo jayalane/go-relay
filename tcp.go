@@ -162,6 +162,10 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 		ml.Ls("Checks ok use squid ", ip, theCtx.relayCidr)
 		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
 	}
+	if isSNI && (*theConfig)["squidForSNI"].BoolVal {
+		ml.Ls("SNI using squid", ip, isSNI)
+		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
+	}
 	return "", ""
 }
 
