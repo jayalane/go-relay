@@ -121,14 +121,14 @@ func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
 	} else {
 		port = sniPort
 	}
-	if sni != "" {
-		return sni, port
-	}
 	if (*theConfig)["destHostOverride"].StrVal != "" {
 		a := strings.Split((*theConfig)["destHostOverride"].StrVal, ",")
 		b := a[rand.Intn(len(a))]
 		ml.ls("Using random override", b)
 		return b, port
+	}
+	if sni != "" {
+		return sni, port
 	}
 	ml.ls("Checking for real addr going with ", na, sni, sniPort, h, port)
 	return h, port
@@ -170,18 +170,22 @@ func initConnCtx() {
 }
 
 // getHttpHost checks a buffer for an HTTP 1 style Host line
-func getHTTPHost(data []byte) (string, error) {
+func getHTTPHost(data []byte) (string, string, error) {
 	a := strings.Split(string(data), httpNewLine)
 	for _, s := range a {
 		if len(s) >= len(headerForHost) && s[0:len(headerForHost)] == headerForHost {
 			b := strings.Split(s, " ")
 			if len(b) >= 1 {
-				return b[1], nil
+				if strings.Contains(b[1], ":") {
+					c := strings.Split(b[1], ":")
+					return c[0], c[1], nil
+				}
+				return b[1], "", nil
 			}
-			return "", errors.New("Conn line short" + string(s))
+			return "", "", errors.New("Conn line short" + string(s))
 		}
 	}
-	return "", errors.New("No Host header")
+	return "", "", errors.New("No Host header")
 }
 
 // handleConn is a long lived go routine to get connections from listener
@@ -492,9 +496,10 @@ func (c *connection) run() {
 	}
 	hasSNI := false
 	dstHost, err := parser.GetHostname(firstRead[:n]) // peak for SNI in https
+	dstPort := ""
 	if err != nil {
 		// check for HTTP Host: header in http
-		dstHost, err = getHTTPHost(firstRead[:n])
+		dstHost, dstPort, err = getHTTPHost(firstRead[:n])
 		if err != nil {
 			ml.ls("No Host Header:", err)
 			dstHost = ""
@@ -510,7 +515,6 @@ func (c *connection) run() {
 		ml.ls("Got SNI", dstHost)
 	}
 	// first get NAT address
-	dstPort := ""
 	host := ""
 	port := ""
 	c.lock.Lock()
