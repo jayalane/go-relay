@@ -7,7 +7,6 @@ import (
 	"log"
 	"os/user"
 	"sync/atomic"
-	"time"
 )
 
 const (
@@ -41,7 +40,7 @@ func initOnce() {
 	// init rotating logs
 	r1, err := rotatelogs.New(
 		logPathTemplate,
-		rotatelogs.WithMaxAge(time.Hour*168),
+		rotatelogs.WithRotationSize(8*1024*1024),
 	)
 	if err != nil {
 		log.Panic("Can't open rotating logs")
