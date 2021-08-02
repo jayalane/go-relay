@@ -6,6 +6,8 @@ replace github.com/jayalane/go-relay/udpProxy => ./udpProxy
 
 replace github.com/jayalane/go-counter => ../go-counter/
 
+replace github.com/jayalane/go-lll => ../go-lll/
+
 replace github.com/jayalane/go-tinyconfig => ../go-tinyconfig/
 
 require (
