@@ -110,6 +110,7 @@ func main() {
 	// init the globals
 	numTCPConnHand := (*theConfig)["numTcpConnHandlers"].IntVal
 	numUDPConnHand := (*theConfig)["numUdpConnHandlers"].IntVal
+
 	// this is illogical coupling between # go routines and buffer size
 	theCtx.tcpConnChan = make(chan *tcpConn, numTCPConnHand)
 	theCtx.udpMsgChan = make(chan *udpMsg, numUDPConnHand)
