@@ -24,7 +24,7 @@ const (
 	closed
 )
 
-// info about an object to check
+// info about a TCP Connection
 type tcpConn struct {
 	lock       sync.RWMutex
 	state      connState
