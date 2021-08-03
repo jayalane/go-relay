@@ -65,7 +65,7 @@ destCidrUseSquid = 0.0.0.0/0
 #destCidrUseSquid = 127.1.1.1/32
 srcCidrBan = 129.0.0.0/8
 # debug levels are (from low to high: network, state, all, none)
-debugLevel = state
+debugLevel = network
 # comments
 IOF
 
