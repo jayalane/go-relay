@@ -17,14 +17,15 @@ import (
 type udpMsg struct {
 	n    int
 	conn net.PacketConn
-	la   net.Addr // destination
-	ra   net.Addr // source
+	la   string // net.Addr // destination
+	ra   string // net.Addr // source
+	na   string // net.Addr // NAT destination
 	buf  []byte
 }
 
 func (m udpMsg) log() string {
-	return fmt.Sprintf("%s/%s/%s",
-		m.ra.String(), m.la.String(), string(m.buf[:m.n]))
+	return fmt.Sprintf("%s/%s/%s/%s",
+		m.ra, m.la, m.na, string(m.buf[:m.n]))
 }
 
 // New takes an incoming net.PacketConn and
@@ -48,20 +49,26 @@ func startUDPHandler() {
 	// start the go routines to listen to the network and
 	// send the out bound msgs to the channel
 	for _, p := range strings.Split((*theConfig)["udpPorts"].StrVal, ",") {
-		udpAddr := fmt.Sprintf("0.0.0.0:%s", p)
-		conn, err := net.ListenPacket("udp", udpAddr)
+		udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("0.0.0.0:%s", p))
+		if err != nil {
+			count.Incr("listen-udp-error")
+			ml.La("ERROR: can't UDP listen to", p, err) // handle error
+			return
+		}
+		conn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
 			count.Incr("listen-udp-error")
 			ml.La("ERROR: can't UDP listen to", p, err) // handle error
 			return
 		}
 		la := conn.LocalAddr()
-		ml.La("OK: UDP Listening to", la.String())
+		ml.La("OK: UDP Listening to", la.String(), conn)
 
 		// listen handler go routine
 		go func() {
 			buffer := make([]byte, (*theConfig)["udpBufferSize"].IntVal)
 			for {
+				ml.La("Conn is now", conn)
 				n, ra, err := conn.ReadFrom(buffer)
 				if err != nil {
 					count.Incr("udp-read-error")
@@ -69,10 +76,21 @@ func startUDPHandler() {
 					count.Incr("udp-read-bad")
 					return // Not sure this is correct
 				}
-				ml.Ln("Got an outgoing UDP msg", buffer[:n])
+				ml.Ln("Got an outgoing UDP msg", buffer[:n], conn, ra)
 				count.Incr("udp-read-ok")
 				count.Incr("udp-read-chan-add")
-				theCtx.udpMsgChan <- &udpMsg{n, conn, la, ra, buffer}
+				_, na, newConn, err := getOriginalDstUDP(conn) // read NAT stuff
+				if newConn != nil {
+					conn = newConn
+				}
+				if err == nil {
+					host, port := hostPart(na)
+					ml.Ls("Got UDP NAT Addr:", host, port)
+					count.Incr("UDP_NAT")
+				} else {
+					ml.Ls("NAT call got err", err)
+				}
+				theCtx.udpMsgChan <- &udpMsg{n, conn, la.String(), ra.String(), na, buffer}
 			}
 		}()
 	}
@@ -183,10 +201,8 @@ func handleUDPProxy() {
 				count.Incr("read-udp-chan-remove")
 				ml.Ln("Got an outbound msg", c.log())
 
-				lHost, lPort := hostPart(c.la.String())
-				rHost, rPort := hostPart(c.ra.String())
-				lPort = "53"
-				lHost = "8.8.8.8"
+				lHost, lPort := hostPart(c.la)
+				rHost, rPort := hostPart(c.ra)
 				m := pb.UdpMsg{
 					SrcIp:   rHost,
 					SrcPort: rPort,
