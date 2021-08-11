@@ -43,6 +43,9 @@ For UDP, it expects to talk to a squid proxy and CONNECT to a copy of
 of sender/receiver pairs is all in the RPC server, the transproxy is
 stateless.  
 
-For a while the UDP proxy broke TCP functionality, but with this commit
-cdc2167f42c4abf6ee90c72f5dbd45a4e0653b44 they both work.  Also the misc
-directory has some scripts that make systemd scripts to install and run them.
+For a while the UDP proxy broke TCP functionality, but with this
+commit 6c254434aa1261f2cfa57d1845e0327aecbe3401 they both work (I had
+an earlier commit ID in here earlier but I think I was confused about
+the state of my routing and it didn't work).  Also the misc directory
+has some scripts that make systemd scripts to install and run them.
+
