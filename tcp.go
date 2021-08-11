@@ -54,6 +54,7 @@ func min(a int, b int) int {
 // tcpConn
 
 // dialWithProxy dials out to the endpoint with a given proxy
+// returns connection, connection String, and error
 func dialWithProxy(pH string, pP string,
 	rH string, rP string,
 	remoteAddr *net.Addr,
@@ -102,6 +103,7 @@ func dialWithProxy(pH string, pP string,
 		ra,
 	)
 	if (*theConfig)["sendConnectLines"].BoolVal == true {
+		ml.Ln("Sending", connS)
 		conn.Write([]byte(connS)) // check for error?
 	}
 	return conn, connS, nil
@@ -155,6 +157,9 @@ func hostPart(ad string) (string, string) {
 
 // getProxyAddr will return the squid endpoint
 func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
+	if isSNI {
+		return (*theConfig)["squidHost"].StrVal, (*theConfig)["squidPort"].StrVal
+	}
 	ip := net.ParseIP(dst)
 	ml.Ls("Checking for squid", na, dst, ip, theCtx.relayCidr)
 	if theCtx.relayCidr == nil || theCtx.relayCidr.Contains(ip) {
@@ -716,12 +721,20 @@ func (c *tcpConn) run() {
 		count.Incr("proxy-connect")
 		count.Incr("proxy-connect-" + pH)
 		cc, ConnS, err := dialWithProxy(pH, pP, rH, rP, &ra, 15*time.Second)
+		if len(ConnS) > 0 {
+			ml.Ls("Setting conn into waiting for 200")
+			c.state = waitingFor200
+		} else {
+			ml.Ls("Setting conn into up")
+			c.state = up
+		}
 		tcpConn, ok := cc.(*net.TCPConn)
 		if ok {
 			c.outConn = tcpConn
 		} else {
 			ml.Ls("ERROR: connect out got wrong type", err, fmt.Sprintf("%T", cc))
 			c.inConn.Close()
+			c.state = closed
 			return
 		}
 		if err != nil {
@@ -729,15 +742,16 @@ func (c *tcpConn) run() {
 			ml.Ls("Closed inConn")
 			if c.outConn != nil {
 				c.outConn.Close()
+				c.state = closed
 			}
+			ml.Ls("Closed inConn")
 			return
 		}
-		c.state = up
-		ml.La("Handling a connection", c.inConn.RemoteAddr(), ConnS)
+		ml.La("Handling a connection", c.state, c.inConn.RemoteAddr(), ConnS)
 	}
 	// and stage the fristRead data
 	c.outBound <- firstRead[:n]
-
+	ml.La("About to start in read loop, state", c.state)
 	// now a goroutine per connection (in and out)
 	// data flow thru a per connection
 	count.Incr("connection-pairing")

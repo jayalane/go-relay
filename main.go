@@ -21,7 +21,9 @@ var ml lll.Lll
 var theConfig *config.Config
 var defaultConfig = `#
 ports = 5999
-udpPorts = 53
+udpPorts = 5999
+udpBufferSize = 8192
+udpOobBufferSize = 8192
 isNAT = true
 debugLevel = network
 # network, state, always, or none
@@ -40,8 +42,6 @@ numBuffers = 100
 profListen = localhost:6060
 srcCidrBan = 127.0.0.0/8
 requestHeaderAgentForConnect = Go-http-client/1.0
-udpBufferSize = 8192
-udpPorts = 5999
 # comments
 `
 

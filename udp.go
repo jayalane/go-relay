@@ -2,7 +2,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	count "github.com/jayalane/go-counter"
@@ -10,8 +12,11 @@ import (
 	"google.golang.org/grpc"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 type udpMsg struct {
@@ -35,7 +40,72 @@ func newUDP(in net.PacketConn) *udpMsg {
 	return &c
 }
 
-//
+func readUDPMsg(c *net.UDPConn, buf []byte) (int, *net.UDPAddr, *net.UDPAddr, error) {
+
+	oob := make([]byte, (*theConfig)["udpOobBufferSize"].IntVal)
+	n, oobn, _, addr, err := c.ReadMsgUDP(buf, oob)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("parsing socket control message: %s", err)
+	}
+	var originalDst *net.UDPAddr
+	for _, msg := range msgs {
+		if msg.Header.Level == syscall.SOL_IP && msg.Header.Type == syscall.IP_RECVORIGDSTADDR {
+			originalDstRaw := &syscall.RawSockaddrInet4{}
+			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
+				return 0, nil, nil, fmt.Errorf("read original destination address: %s", err)
+			}
+			switch originalDstRaw.Family {
+			case syscall.AF_INET:
+				pp := (*syscall.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
+				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
+				originalDst = &net.UDPAddr{
+					IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
+					Port: int(p[0])<<8 + int(p[1]),
+				}
+
+			case syscall.AF_INET6:
+				pp := (*syscall.RawSockaddrInet6)(unsafe.Pointer(originalDstRaw))
+				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
+				originalDst = &net.UDPAddr{
+					IP:   net.IP(pp.Addr[:]),
+					Port: int(p[0])<<8 + int(p[1]),
+					Zone: strconv.Itoa(int(pp.Scope_id)),
+				}
+
+			default:
+				return 0, nil, nil, fmt.Errorf("original destination is an unsupported network family")
+			}
+		}
+	}
+
+	if originalDst == nil {
+		return 0, nil, nil, fmt.Errorf("unable to obtain original destination: %s", err)
+	}
+
+	return n, addr, originalDst, nil
+}
+
+// setTproxy2Listen does the set sock opts to enable TProxy
+func setTproxy2Listen(conn *net.UDPConn) {
+	fdFile, err := conn.File()
+	fd := int(fdFile.Fd())
+	if err != nil {
+		return
+	}
+	defer fdFile.Close()
+	err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1)
+	if err != nil {
+		return
+	}
+	syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1)
+}
+
+// startupUDPHandler does the UDP listens, and setups up the gRPC stuff
+// etc.
 func startUDPHandler() {
 
 	// this has a lot of comments as this was my thinking process
@@ -51,16 +121,17 @@ func startUDPHandler() {
 	for _, p := range strings.Split((*theConfig)["udpPorts"].StrVal, ",") {
 		udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("0.0.0.0:%s", p))
 		if err != nil {
-			count.Incr("listen-udp-error")
+			count.Incr("listen-udp-fmt-error")
 			ml.La("ERROR: can't UDP listen to", p, err) // handle error
-			return
+			continue
 		}
 		conn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
 			count.Incr("listen-udp-error")
 			ml.La("ERROR: can't UDP listen to", p, err) // handle error
-			return
+			continue
 		}
+		setTproxy2Listen(conn) // don't care about errors here
 		la := conn.LocalAddr()
 		ml.La("OK: UDP Listening to", la.String(), conn)
 
@@ -69,7 +140,7 @@ func startUDPHandler() {
 			buffer := make([]byte, (*theConfig)["udpBufferSize"].IntVal)
 			for {
 				ml.La("Conn is now", conn)
-				n, ra, err := conn.ReadFrom(buffer)
+				n, ra, la, err := readUDPMsg(conn, buffer)
 				if err != nil {
 					count.Incr("udp-read-error")
 					ml.La("ERROR: read UDP failed", conn, err)
@@ -97,7 +168,7 @@ func startUDPHandler() {
 }
 
 // getProxyClient sets the environment variable to squid and
-// gets the gRPC client.
+// gets the gRPC client - because gRPC uses env vars
 func getProxyClient() (pb.ProxyClient, error) {
 	squidProxyStr := fmt.Sprintf("%s:%s", (*theConfig)["squidHost"].StrVal,
 		(*theConfig)["squidPort"].StrVal)
