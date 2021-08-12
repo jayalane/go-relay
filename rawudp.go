@@ -94,7 +94,7 @@ func (u *udphdr) checksum(ip *iphdr, payload []byte) {
 
 func sendRaw(m *pb.UdpMsg) {
 	var err error
-	ul.La("Sending ", m)
+	ul.La("Sending ", m.String())
 	count.Incr("udp-write-in-start")
 
 	ipSrcStr := m.SrcIp
@@ -132,7 +132,7 @@ func sendRaw(m *pb.UdpMsg) {
 		ul.Ls("error creating a raw socket:", m, err)
 		return
 	}
-
+	ul.Ls("Got FD for send", fd)
 	err = unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_HDRINCL, 1)
 	if err != nil {
 		ul.Ls("error enabling IP_HDRINCL:", m, err)
