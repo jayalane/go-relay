@@ -52,13 +52,13 @@ func startUDPHandler() {
 	for _, p := range strings.Split((*theConfig)["udpPorts"].StrVal, ",") {
 		udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("0.0.0.0:%s", p))
 		if err != nil {
-			count.Incr("listen-udp-fmt-error")
+			count.Incr("udp-listen-fmt-error")
 			ul.La("ERROR: can't UDP listen to", p, err) // handle error
 			continue
 		}
 		listener, err := tproxy.ListenUDP("udp", udpAddr) // like net but does the NAT stuff
 		if err != nil {
-			count.Incr("listen-udp-error")
+			count.Incr("udp-listen-error")
 			ul.La("ERROR: can't UDP listen to", p, err) // handle error
 			continue
 		}
@@ -72,20 +72,20 @@ func startUDPHandler() {
 				n, ra, la, err := tproxy.ReadFromUDP(listener, buffer)
 				if err != nil {
 					if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-						count.Incr("udp-read-error-temp")
+						count.Incr("udp-read-out-error-temp")
 						ul.La("ERROR: read UDP temp failed", listener, netErr)
 						continue
 					}
-					count.Incr("udp-read-error-fatal")
+					count.Incr("udp-read-out-error-fatal")
 					ul.La("ERROR: read UDP failed", listener, err)
 					return // ?
 				}
 				ul.Ln("Got an outgoing UDP msg", buffer[:n], listener, ra)
-				count.Incr("udp-read-ok")
-				count.Incr("udp-read-chan-add")
+				count.Incr("udp-read-out-ok")
+				count.Incr("udp-read-out-chan-add")
 				host, port := hostPart(ra.String())
 				ul.Ls("Got UDP NAT Addr:", host, port)
-				count.Incr("UDP_NAT")
+				count.Incr("udp-route-out-nat")
 				theCtx.udpMsgChan <- &udpMsg{n, listener, la.String(), ra.String(), buffer}
 			}
 		}()
@@ -176,7 +176,7 @@ func handleUDPProxy() {
 	var udpClient pb.ProxyClient
 	var err error
 	for {
-		udpClient, err = getProxyClient() // apparently once this exists
+		udpClient, err = getProxyClient() // apparently once this exists it is robust
 		if err == nil {
 			break
 		}
@@ -184,7 +184,6 @@ func handleUDPProxy() {
 		time.Sleep(10 * time.Second)
 	}
 	ul.La("Got a gRPC client", udpClient)
-	// it lasts robustly
 	stream, err := udpClient.SendMsgs(context.Background())
 	ul.La("Got here got a stream", stream, err)
 	// start up a go routine to read outbound msgs from channel
@@ -194,7 +193,7 @@ func handleUDPProxy() {
 		for {
 			select {
 			case c := <-theCtx.udpMsgChan:
-				count.Incr("read-udp-chan-remove")
+				count.Incr("udp-read-out-chan-remove")
 				ul.Ln("Got an outbound msg", c.log())
 
 				lHost, lPort := hostPart(c.la)
@@ -210,14 +209,15 @@ func handleUDPProxy() {
 				if err != nil {
 					ul.La("Send failed", err)
 					// and ... ?
+				} else {
+					ul.La("Sent ok to proxy")
 				}
-				ul.La("Sent ok to proxy")
 			case <-time.After(60 * time.Second * 5):
-				count.Incr("read-udp-chan-idle")
+				count.Incr("udp-read-out-chan-idle")
 			}
 		}
 	}()
-	// start up a routine to read from the
+	// start up a routine to read from the stream
 	go func(s pb.Proxy_SendMsgsClient) {
 		for {
 			m, err := s.Recv()
@@ -227,6 +227,7 @@ func handleUDPProxy() {
 				//return // close?
 				continue // ? break  or new client?
 			}
+			count.Incr("udp-read-in-msg-gprc")
 			ul.Ln("proxy recv go thing", m)
 			sendRaw(m) // no error checking - some logging and something external will retry
 		}
