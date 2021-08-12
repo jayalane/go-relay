@@ -40,7 +40,7 @@ iptables -P OUTPUT ACCEPT
 iptables -t mangle -A PREROUTING -p udp --dport 53 -j MARK --set-mark 1
 ip rule delete table 100 || echo "No rule already"
 ip rule add fwmark 1 lookup 100
-ip route add local 0.0.0.0/0 dev lo table 100
+ip route add local 0.0.0.0/0 dev lo table 100 || ip route replace local 0.0.0.0/0 dev lo table 100 || echo "can't route UDP"
 
 
 for p in 22 80 443  ; do
