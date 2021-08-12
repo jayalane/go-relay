@@ -37,13 +37,14 @@ iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
 iptables -P OUTPUT ACCEPT
 
+iptables -t mangle -A PREROUTING -p udp --dport 53 -j MARK --set-mark 1
+ip rule delete table 100 || echo "No rule already"
+ip rule add fwmark 1 lookup 100
+ip route add local 0.0.0.0/0 dev lo table 100
+
 
 for p in 22 80 443  ; do
     iptables -t nat -A PREROUTING -p tcp --dport $p -j REDIRECT --to-port 5999
-done
-
-for p in 53  ; do
-    iptables -t nat -A PREROUTING -p udp --dport $p -j REDIRECT --to-port 1053
 done
 
 chmod 555 /etc/transproxy/transproxy
@@ -52,7 +53,7 @@ chown root.root /etc/transproxy/transproxy
 cat <<'IOF' > /etc/transproxy/config.txt
 # put config here
 ports = 5999
-udpPorts = 1053
+udpPorts = 53
 destHostOverride = 
 destPortOverride = 
 numConnectionHandlers = 20
