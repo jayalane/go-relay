@@ -18,6 +18,9 @@ import (
 )
 
 var ml lll.Lll
+var tl lll.Lll
+var ul lll.Lll
+
 var theConfig *config.Config
 var defaultConfig = `#
 ports = 5999
@@ -98,6 +101,8 @@ func main() {
 
 	// low level logging (first so everything rotates)
 	ml = lll.Init("PROXY", (*theConfig)["debugLevel"].StrVal)
+	tl = lll.Init("TCP", (*theConfig)["debugLevel"].StrVal)
+	ul = lll.Init("UDP", (*theConfig)["debugLevel"].StrVal)
 
 	// config sig handlers - to enable log levels
 	theCtx.reload = make(chan os.Signal, 2)
