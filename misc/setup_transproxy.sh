@@ -29,6 +29,8 @@ set -e
 mkdir -p /etc/transproxy/
 # wget # TODO github releases
 
+sysctl -w net.ipv4.ip_forward=1
+
 iptables -F
 iptables -t nat -F 
 iptables -t mangle -F
@@ -37,7 +39,18 @@ iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
 iptables -P OUTPUT ACCEPT
 
-iptables -t mangle -A PREROUTING -p udp --dport 53 -j MARK --set-mark 1
+#iptables -t mangle -A PREROUTING -p udp --dport 53 -j MARK --set-mark 1
+#iptables -t mangle -A PREROUTING -i eth0 -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 1053
+
+
+iptables -t mangle -N DIVERT
+iptables -t mangle -A PREROUTING -m socket -j DIVERT
+iptables -t mangle -A DIVERT -j MARK --set-mark 1
+iptables -t mangle -A DIVERT -j ACCEPT
+iptables -t mangle -A PREROUTING -i eth2 -p tcp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 8080
+iptables -t mangle -A PREROUTING -i eth2 -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 8080
+
+
 ip rule delete table 100 || echo "No rule already"
 ip rule add fwmark 1 lookup 100
 ip route add local 0.0.0.0/0 dev lo table 100 || ip route replace local 0.0.0.0/0 dev lo table 100 || echo "can't route UDP"
@@ -53,7 +66,7 @@ chown root.root /etc/transproxy/transproxy
 cat <<'IOF' > /etc/transproxy/config.txt
 # put config here
 ports = 5999
-udpPorts = 53
+udpPorts = 1053
 destHostOverride = 
 destPortOverride = 
 numConnectionHandlers = 20
