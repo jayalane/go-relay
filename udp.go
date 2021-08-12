@@ -165,6 +165,46 @@ func getProxyClient() (pb.ProxyClient, error) {
 	return udpClient, nil
 }
 
+func netUDPAddr(ip string, port string) (*net.UDPAddr, error) {
+	addr, err := net.ResolveUDPAddr("udp", ip+":"+port)
+	return addr, err
+}
+
+func sendRaw(m *pb.UdpMsg) (int, error) {
+
+	dstAddr, err := netUDPAddr(m.DstIp, m.DstPort)
+	if err != nil {
+		ul.Ls("Addr error", m.DstIp, m.DstPort, err)
+		return 0, err
+	}
+	srcAddr, err := netUDPAddr(m.SrcIp, m.SrcPort)
+	if err != nil {
+		ul.Ls("Addr error", m.SrcIp, m.SrcPort, err)
+		return 0, err
+	}
+
+	inConn, err := tproxy.DialUDP("udp", dstAddr, srcAddr)
+	if err != nil {
+		ul.Ls("Failed to connect to original UDP source", srcAddr.String(), err)
+		count.Incr("udp-send-in-conn-err")
+		return 0, err
+	}
+	defer inConn.Close()
+	bytesWritten, err := inConn.Write(m.Msg)
+	if err != nil {
+		ul.Ls("Encountered error while writing to local", inConn.RemoteAddr(), err)
+		count.Incr("udp-send-in-write-err")
+		return 0, err
+	} else if bytesWritten < len(m.Msg) {
+		ul.Ls("Not all bytes in buffer written", bytesWritten,
+			len(m.Msg),
+			inConn.RemoteAddr())
+	}
+	count.Incr("udp-send-in-ok")
+	count.IncrDelta("udp-send-in-len", int64(bytesWritten))
+	return bytesWritten, nil
+}
+
 // handleUDPProxy opens connection to uproxy, and sends
 // UDP segments from the channel to the uproxy.
 // it also stats a reader for the uproxy which sends the
@@ -228,8 +268,14 @@ func handleUDPProxy() {
 				continue // ? break  or new client?
 			}
 			count.Incr("udp-read-in-msg-gprc")
-			ul.Ln("proxy recv go thing", m)
-			sendRaw(m) // no error checking - some logging and something external will retry
+			ul.Ln("proxy recv go thing", m.String())
+			nn, err2 := sendRaw(m) // no error checking - some logging and something external will retry
+			if err2 != nil {
+				ul.Ln("Send got err", err)
+				continue
+			} else {
+				ul.Ln("Send went ok", nn)
+			}
 		}
 	}(stream)
 	<-done
