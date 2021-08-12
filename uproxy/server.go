@@ -179,7 +179,7 @@ func (s *udpProxyServer) SendMsgs(stream pb.Proxy_SendMsgsServer) error {
 				count.Incr("grpc_in_send_ok")
 
 			case <-time.After(60 * time.Second * 5):
-				ml.La("No inbound msgs for a minute")
+				ml.La("No inbound msgs for five minutes")
 				done <- true
 				count.Incr("grpc_in_send_timeout")
 
