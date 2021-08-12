@@ -49,3 +49,5 @@ an earlier commit ID in here earlier but I think I was confused about
 the state of my routing and it didn't work).  Also the misc directory
 has some scripts that make systemd scripts to install and run them.
 
+WIth 484a059cdcf4997a09a2a56e87ed73fa8be4a72d UDP proxying works well
+enough for my laptop to do DNS queries thru it.  
