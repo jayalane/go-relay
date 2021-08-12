@@ -20,6 +20,10 @@ type udpProxyServer struct {
 	inChan           chan *pb.UdpMsg // UDP from network to gRPC
 }
 
+type tempError interface {
+	Temporary() bool
+}
+
 func newProxyServer() *udpProxyServer {
 	s := udpProxyServer{}
 
@@ -57,10 +61,26 @@ func (s *udpProxyServer) handleOutgoingMsg(m *pb.UdpMsg) {
 		if err != nil {
 			ml.La("error resolving", outAddr, err)
 		}
-		conn, err := net.DialUDP("udp", nil, udpAddr)
+		var conn *net.UDPConn
+		for {
+			delay := 50 * time.Millisecond
+			conn, err = net.DialUDP("udp", nil, udpAddr)
+			if err != nil {
+				if terr, ok := err.(tempError); ok && terr.Temporary() {
+					time.Sleep(delay)
+					if delay < 500*time.Millisecond {
+						delay = delay * 2
+					}
+					count.Incr("udp_out_dial_temp_err")
+					continue // retry
+				}
+				ml.La("Error Dialing", outAddr, err)
+				count.Incr("udp_out_dial_err")
+				return
+			}
+			break // not temp error fail
+		}
 		if err != nil {
-			ml.La("Error Dialing", outAddr, err)
-			count.Incr("udp_out_dial_bad")
 			return
 		}
 		count.Incr("udp_out_dial_ok")
@@ -73,7 +93,7 @@ func (s *udpProxyServer) handleOutgoingMsg(m *pb.UdpMsg) {
 			// and channel to handle the listen segments
 			for {
 				buffer := make([]byte, 4096)
-				ml.Ls("about to read from conn", conn)
+				ml.Ls("about to read conn from", conn)
 				count.Incr("udp_in_read")
 				n, ra, err := conn.ReadFrom(buffer)
 				if err != nil {
