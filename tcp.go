@@ -565,7 +565,7 @@ func (c *tcpConn) outReadLoop() {
 		count.Incr("read-out-ok")
 		count.Incr("read-out-ok-" + c.remoteHost + ":" + c.remotePort)
 		count.IncrDelta("read-out-len", int64(n))
-		count.IncrDelta("read-out-len"+c.remoteHost+":"+c.remotePort, int64(n))
+		count.IncrDelta("read-out-len-"+c.remoteHost+":"+c.remotePort, int64(n))
 		c.outBound <- buffer[0:n] // to do non-blocking?
 	}
 }
