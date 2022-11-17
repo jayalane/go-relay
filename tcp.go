@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -42,13 +41,6 @@ const (
 	httpNewLine       = "\r\n"
 	requestForConnect = "CONNECT %s:%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\nX-Forwarded-For: %s\r\n\r\n"
 )
-
-func min(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 // utility functions then go routines start then class methods for
 // tcpConn
@@ -102,9 +94,15 @@ func dialWithProxy(pH string, pP string,
 		(*theConfig)["requestHeaderAgentForConnect"].StrVal,
 		ra,
 	)
-	if (*theConfig)["sendConnectLines"].BoolVal == true {
+	if (*theConfig)["sendConnectLines"].BoolVal {
 		tl.Ln("Sending", connS)
-		conn.Write([]byte(connS)) // check for error?
+		_, err = conn.Write([]byte(connS)) // check for error?
+		if err != nil {
+			count.Incr("proxy-connect-write-error")
+			count.Incr("proxy-connect-write-error" + pH)
+			conn.Close()
+			return nil, "", err
+		}
 	}
 	return conn, connS, nil
 }
@@ -119,7 +117,7 @@ func constHTTP200Header() []string {
 
 // checkFor200 takes a buffer and sees if it was a successful
 // connect reply.  Returns the remainder (if any) and ok set to
-// true on success or '', false on failure
+// true on success or ”, false on failure
 func checkFor200(n int, buf []byte) ([]byte, bool) {
 	a := strings.Split(string(buf[:n]), httpNewLine)
 	ok := false
@@ -177,7 +175,8 @@ func getProxyAddr(na net.Addr, dst string, isSNI bool) (string, string) {
 // getRealAddr will look up the true hostname for the CONNECT call
 // - looking at NAT, SNI and Host: line - overrideable via config
 func getRealAddr(na net.Addr, sni string, sniPort string) (string, string) {
-	h, port := hostPart(na.String())
+	var port string
+	h, _ := hostPart(na.String())
 	tl.Ls("Checking for real addr", na, sni, sniPort)
 	if (*theConfig)["destPortOverride"].StrVal != "" {
 		port = (*theConfig)["destPortOverride"].StrVal
@@ -318,9 +317,9 @@ func newTCP(in net.TCPConn) *tcpConn {
 	c.writesDone = make(chan bool, 5)
 	c.lock = sync.RWMutex{}
 	c.state = waitingFor200
-	c.inConn.SetKeepAlive(true)
-	c.inConn.SetLinger(5)
-	c.inConn.SetNoDelay(true)
+	_ = c.inConn.SetKeepAlive(true)
+	_ = c.inConn.SetLinger(5)
+	_ = c.inConn.SetNoDelay(true)
 	return &c
 }
 
@@ -570,6 +569,7 @@ func (c *tcpConn) outReadLoop() {
 	}
 }
 
+/*
 // setIPTransparent makes the syscall to
 // make localaddr be the original NATted
 // destination
@@ -581,7 +581,7 @@ func (c *tcpConn) setIPTransparent() {
 		return
 	}
 
-	rs.Control(func(fd uintptr) {
+	_ = rs.Control(func(fd uintptr) {
 		var err error
 
 		err = syscall.SetsockoptInt(int(fd),
@@ -594,6 +594,7 @@ func (c *tcpConn) setIPTransparent() {
 		return
 	})
 }
+*/
 
 // run starts up the work on a new connection
 func (c *tcpConn) run() {
@@ -659,10 +660,7 @@ func (c *tcpConn) run() {
 	c.inConn = *newConn // even in err case
 	c.lock.Unlock()
 	if dstHost == "" && (*theConfig)["isNAT"].BoolVal {
-		dstPort = port
 		dstHost = host
-	} else {
-		dstPort = "443" // hmm what should this be?
 	}
 	dstPort = port
 	rH, rP := getRealAddr(la, dstHost, dstPort)
@@ -700,9 +698,9 @@ func (c *tcpConn) run() {
 			tl.Ls("Closed inConn")
 			return
 		}
-		c.outConn.SetKeepAlive(true)
-		c.outConn.SetLinger(5)
-		c.outConn.SetNoDelay(true)
+		_ = c.outConn.SetKeepAlive(true)
+		_ = c.outConn.SetLinger(5)
+		_ = c.outConn.SetNoDelay(true)
 		c.state = up
 		tl.La("Handling a direct connection",
 			c.inConn.RemoteAddr(),

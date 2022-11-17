@@ -62,8 +62,8 @@ func (s *udpProxyServer) handleOutgoingMsg(m *pb.UdpMsg) {
 			ml.La("error resolving", outAddr, err)
 		}
 		var conn *net.UDPConn
+		delay := 50 * time.Millisecond
 		for {
-			delay := 50 * time.Millisecond
 			conn, err = net.DialUDP("udp", nil, udpAddr)
 			if err != nil {
 				if terr, ok := err.(tempError); ok && terr.Temporary() {
@@ -87,8 +87,8 @@ func (s *udpProxyServer) handleOutgoingMsg(m *pb.UdpMsg) {
 		ml.La("Dial succeeded", udpAddr, conn.LocalAddr())
 		wg := sync.WaitGroup{}
 		defer conn.Close()
+		wg.Add(1)
 		go func(conn *net.UDPConn, outAddr string, inAddr string) {
-			wg.Add(1)
 			defer wg.Done()
 			// and channel to handle the listen segments
 			for {

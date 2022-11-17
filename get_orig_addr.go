@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	soOriginalDst     = 80
-	iP6tSoOriginalDst = 80
+	soOriginalDst = 80
 )
 
 func isEINTR(err error) bool {
@@ -62,7 +61,7 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 	// Chris - this needs to handle EINTR
 	done := false
 	var addr *syscall.IPv6Mreq
-	for done != true {
+	for !done {
 		addr, err = syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, soOriginalDst)
 		if err != nil {
 			if isEINTR(err) {
@@ -122,6 +121,7 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 	return
 }
 
+/*
 func getOriginalDstUDP(clientConn *net.UDPConn) (rawaddr []byte,
 	host string,
 	newUDPConn *net.UDPConn,
@@ -219,3 +219,4 @@ func getOriginalDstUDP(clientConn *net.UDPConn) (rawaddr []byte,
 
 	return
 }
+*/

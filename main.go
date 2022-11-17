@@ -61,22 +61,19 @@ type serverContext struct {
 var theCtx serverContext
 
 func reloadHandler() {
-	for {
-		select {
-		case c := <-theCtx.reload:
-			ml.La("OK: Got a signal, reloading config", c)
+	for c := range theCtx.reload {
+		ml.La("OK: Got a signal, reloading config", c)
 
-			t, err := config.ReadConfig("config.txt", defaultConfig)
-			if err != nil {
-				fmt.Println("Error opening config.txt", err.Error())
-				return
-			}
-			st := unsafe.Pointer(theConfig)
-			atomic.StorePointer(&st, unsafe.Pointer(&t))
-			fmt.Println("New Config", (*theConfig)) // lll isn't up yet
-			lll.SetLevel(&ml, (*theConfig)["debugLevel"].StrVal)
-			initConnCtx() // to allow reloading the CIDRs
+		t, err := config.ReadConfig("config.txt", defaultConfig)
+		if err != nil {
+			fmt.Println("Error opening config.txt", err.Error())
+			return
 		}
+		st := unsafe.Pointer(theConfig)
+		atomic.StorePointer(&st, unsafe.Pointer(&t))
+		fmt.Println("New Config", (*theConfig)) // lll isn't up yet
+		lll.SetLevel(&ml, (*theConfig)["debugLevel"].StrVal)
+		initConnCtx() // to allow reloading the CIDRs
 	}
 }
 

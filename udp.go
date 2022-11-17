@@ -28,12 +28,14 @@ func (m udpMsg) log() string {
 		m.ra, m.la, string(m.buf[:m.n]))
 }
 
+/*
 // New takes an incoming net.PacketConn and
 // returns an initialized connection
 func newUDP(in net.PacketConn) *udpMsg {
 	c := udpMsg{conn: in}
 	return &c
 }
+*/
 
 // startupUDPHandler does the UDP listens, and setups up the gRPC stuff
 // etc.
@@ -71,7 +73,7 @@ func startUDPHandler() {
 				ul.La("Listener is now", listener)
 				n, ra, la, err := tproxy.ReadFromUDP(listener, buffer)
 				if err != nil {
-					if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 						count.Incr("udp-read-out-error-temp")
 						ul.La("ERROR: read UDP temp failed", listener, netErr)
 						continue
@@ -135,6 +137,10 @@ func getProxyClient() (pb.ProxyClient, error) {
 				if err == nil {
 					ul.Ls("About to call first read for proxy")
 					n, err = conn.Read(buffer)
+					if err != nil {
+						ul.Ln("Got error ", err)
+						return nil, errors.New("proxy read failed")
+					}
 				}
 				_, ok2 := checkFor200(n, buffer)
 				// I don't know if in gRPC the proxy connect can return
