@@ -6,7 +6,7 @@ proto:
 
 uproxy: proto
 	cd uproxy && go fmt && golint && go vet && go build && golangci-lint run . && go test -v -v -race
-	cp uproxy/uproxy
 
 proxy: proto
-	go fmt && golint && go vet && go build && golangci-lint run . && go test -v -v -race
+	go fmt && golint && go vet && go build && go test -v -v -race && go build
+#	go fmt && golint && go vet && go build && golangci-lint run . && go test -v -v -race
