@@ -9,6 +9,7 @@ import (
 	count "github.com/jayalane/go-counter"
 	pb "github.com/jayalane/go-relay/udpProxy"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"os"
 	"strings"
@@ -118,8 +119,8 @@ func getProxyClient() (pb.ProxyClient, error) {
 		ul.Ls("About to dial", uproxyStr)
 		cc, err = grpc.Dial(uproxyStr,
 			grpc.WithBlock(),
-			grpc.WithInsecure(),
-			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 				rH, rP, err := net.SplitHostPort(addr)
 				if err != nil {
 					ul.Ls("splithostport error", err, addr)
@@ -127,6 +128,11 @@ func getProxyClient() (pb.ProxyClient, error) {
 				}
 				pH := (*theConfig)["squidHost"].StrVal
 				pP := (*theConfig)["squidPort"].StrVal
+				cancelTime, ok := ctx.Deadline()
+				var timeout time.Duration // zero value ok here?
+				if ok {
+					timeout = time.Until(cancelTime)
+				}
 				conn, _, err := dialWithProxy(pH, pP, rH, rP, nil, timeout)
 				if err != nil {
 					return nil, err
