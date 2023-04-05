@@ -17,9 +17,9 @@ import (
 	"unsafe"
 )
 
-var ml lll.Lll
-var tl lll.Lll
-var ul lll.Lll
+var ml *lll.Lll
+var tl *lll.Lll
+var ul *lll.Lll
 
 var theConfig *config.Config
 var defaultConfig = `#
@@ -97,6 +97,7 @@ func main() {
 	fmt.Println("Config", (*theConfig)) // lll isn't up yet
 
 	// low level logging (first so everything rotates)
+	// lll.SetLogPath("/tmp")
 	ml = lll.Init("PROXY", (*theConfig)["debugLevel"].StrVal)
 	tl = lll.Init("TCP", (*theConfig)["debugLevel"].StrVal)
 	ul = lll.Init("UDP", (*theConfig)["debugLevel"].StrVal)

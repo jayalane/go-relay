@@ -22,7 +22,7 @@ import (
 	"unsafe"
 )
 
-var ml lll.Lll
+var ml *lll.Lll
 var theConfig *config.Config
 var defaultConfig = `#
 port = 8080
