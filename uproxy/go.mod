@@ -8,7 +8,7 @@ require (
 	github.com/jayalane/go-counter v0.0.0-20230405044057-110fc30883c0
 	github.com/jayalane/go-lll v0.0.0-20230319184427-bcaed09a676c
 	github.com/jayalane/go-relay/udpProxy v0.0.0-00010101000000-000000000000
-	github.com/jayalane/go-tinyconfig v0.0.0-20230405170519-764c588778de
+	github.com/jayalane/go-tinyconfig v0.0.0-20230406214908-d011322222a8
 	google.golang.org/grpc v1.54.0
 )
 
@@ -21,6 +21,6 @@ require (
 	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
