@@ -1,12 +1,20 @@
-all: proxy uproxy
 
-.PHONY: proto
-proto:
-	make -C udpProxy all
+GO_CMD = gofumpt -w . && go fmt ./... && go generate ./... && golint ./... && go vet ./... && govulncheck ./... && staticcheck ./... && go build ./... && golangci-lint run --timeout 3m --enable-all --disable gomnd,lll,rowserrcheck,sqlclosecheck,wastedassign,wrapcheck,gomoddirectives,testpackage,gochecknoglobals,paralleltest,exhaustruct,varnamelen,forbidigo,funlen,ireturn,depguard,nolintlint -e .*G114.* --out-format line-number --path-prefix `pwd` ./...
 
-uproxy: proto
-	cd uproxy && go fmt && golint && go vet && go build && golangci-lint run . && go test -v -v -race
+GO_FILES = $(shell find ./ -name .git -prune -o -name \*.go )
+all: all_mod ${GO_FILES}
+	$(GO_CMD)
 
-proxy: proto
-	go fmt && golint && go vet && go build && golangci-lint run . && go test -v -v -race && go build
+all_mod:
+	go mod download
+
+tidy: 
+	go mod tidy
+
+test:
+	go test ./... -v -v -race -coverprofile fmtcoverage.html
+	gotestsum  --junitfile junit.xml ./...
+	cat junit.xml
+
+.PHONY: tidy proto all_mod test
 

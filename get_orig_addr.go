@@ -16,28 +16,31 @@ const (
 )
 
 func isEINTR(err error) bool {
-
 	if err == nil {
 		return false
 	}
-	errno, ok := err.(syscall.Errno)
+
+	errno, ok := err.(syscall.Errno) // nolint:errorlint
 	if ok && errno == syscall.EINTR {
 		return true
 	}
+
 	return false
 }
 
-func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTCPConn *net.TCPConn, err error) {
+func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTCPConn *net.TCPConn, err error) { //nolint:cyclop,nonamedreturns
 	if clientConn == nil {
-		err = errors.New("ERR: clientConn is nil")
-		return
+		err = errors.New("err: clientConn is nil") //nolint:err113
+
+		return //nolint:nakedret
 	}
 
 	// test if the underlying fd is nil
 	remoteAddr := clientConn.RemoteAddr()
 	if remoteAddr == nil {
-		err = errors.New("ERR: clientConn.fd is nil")
-		return
+		err = errors.New("err: clientConn.fd is nil") //nolint:err113
+
+		return //nolint:nakedret
 	}
 
 	newTCPConn = nil
@@ -47,8 +50,9 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 	// will be in non-blocking mode.  What a pain.
 	clientConnFile, err := clientConn.File()
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
+
 	clientConn.Close()
 
 	// Get original destination
@@ -56,45 +60,59 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 	// Example result: &{Multiaddr:[2 0 31 144 206 190 36 45 0 0 0 0 0 0 0 0] Interface:0}
 	// port starts at the 3rd byte and is 2 bytes long (31 144 = port 8080)
 	// IPv6 version, didn't find a way to detect network family
-	//addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IPV6, IP6T_SO_ORIGINAL_DST)
+	// addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IPV6, IP6T_SO_ORIGINAL_DST)
 	// IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
 	// Chris - this needs to handle EINTR
 	done := false
+
 	var addr *syscall.IPv6Mreq
+
 	for !done {
 		addr, err = syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, soOriginalDst)
 		if err != nil {
 			if isEINTR(err) {
 				continue
 			}
-			ml.Ls("Error from getsockopt", err)
+
+			g.Ml.Ls("Error from getsockopt", err)
 			// still have to redup the FDs
+
 			var newConn net.Conn
+
 			newConn, err = net.FileConn(clientConnFile)
 			if err != nil {
-				return
+				return //nolint:nakedret
 			}
-			if _, ok := newConn.(*net.TCPConn); ok {
-				newTCPConn = newConn.(*net.TCPConn)
+
+			if newTConn, ok := newConn.(*net.TCPConn); ok {
+				newTCPConn = newTConn
+
 				clientConnFile.Close()
 			} else {
-				err = errors.New("Some error with FD cloning")
-				return
+				err = errors.New("some error with FD cloning") //nolint:err113
+
+				return //nolint:nakedret
 			}
-			return
+
+			return //nolint:nakedret
 		}
+
 		done = true
 	}
+
 	newConn, err := net.FileConn(clientConnFile)
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
-	if _, ok := newConn.(*net.TCPConn); ok {
-		newTCPConn = newConn.(*net.TCPConn)
+
+	if nt, ok := newConn.(*net.TCPConn); ok {
+		newTCPConn = nt
+
 		clientConnFile.Close()
 	} else {
-		err = errors.New("Some error with FD cloning")
-		return
+		err = errors.New("some error with FD cloning") //nolint:err113
+
+		return //nolint:nakedret
 	}
 
 	// \attention: IPv4 only!!!
@@ -118,7 +136,7 @@ func getOriginalDst(clientConn *net.TCPConn) (rawaddr []byte, host string, newTC
 		uint16(addr.Multiaddr[2])<<8+uint16(addr.Multiaddr[3]),
 	)
 
-	return
+	return //nolint:nakedret
 }
 
 /*
