@@ -14,7 +14,7 @@ require (
 require (
 	github.com/felixge/fgprof v0.9.3 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/jayalane/go-lll v0.0.0-20240701032621-2f3552fc55a4 // indirect
+	github.com/jayalane/go-lll v0.0.0-20240705211819-06fc7741d960 // indirect
 	github.com/jayalane/go-tinyconfig v0.0.0-20240705214247-5466406a70c3 // indirect
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible // indirect
 	github.com/lestrrat-go/strftime v1.0.6 // indirect
