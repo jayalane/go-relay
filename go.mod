@@ -1,14 +1,14 @@
 module github.com/jayalane/go-relay
 
-go 1.22.5
+go 1.26.3
 
 require (
 	github.com/LiamHaworth/go-tproxy v0.0.0-20190726054950-ef7efd7f24ed
-	github.com/jayalane/go-counter v0.0.0-20240705210921-ef55ebe2f756
-	github.com/jayalane/go-globals v0.0.0-20240703000638-dcb4d3f1b08f
+	github.com/jayalane/go-counter v0.0.0-20241122060713-a345f1a308be
+	github.com/jayalane/go-globals v0.0.0-20240823235735-8589a6f721ae
 	github.com/paultag/sniff v0.0.0-20200207005214-cf7e4d167732
-	google.golang.org/grpc v1.65.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/grpc v1.81.1
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -20,8 +20,8 @@ require (
 	github.com/lestrrat-go/strftime v1.0.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/profile v1.7.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
-	golang.org/x/text v0.15.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240528184218-531527333157 // indirect
+	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 )
