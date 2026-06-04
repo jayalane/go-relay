@@ -271,6 +271,7 @@ func (s *udpProxyServer) SendMsgs(stream pb.Proxy_SendMsgsServer) error {
 		count.Incr("grpc_out_ok")
 		s.handleOutgoingMsg(out)
 	}
+
 	<-done
 
 	return nil

@@ -133,9 +133,9 @@ func getProxyClient() (pb.ProxyClient, error) { //nolint:unparam
 		// open a connection to the UDP gRPC server
 		// this is tricky because we need to use a Squid to reach the endpoint.
 		g.Ml.Ls("About to dial", uproxyStr)
-		//lint:ignore SA1019 we have a custom dialer
-		cc, err = grpc.Dial(uproxyStr, //nolint:staticcheck
-			//lint:ignore SA1019 need blocking to establish control over the connection state
+
+		cc, err = grpc.Dial( //nolint:staticcheck
+			uproxyStr,
 			grpc.WithBlock(), //nolint:staticcheck
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
@@ -205,6 +205,7 @@ func getProxyClient() (pb.ProxyClient, error) { //nolint:unparam
 
 		time.Sleep(backOffDial)
 	}
+
 	g.Ml.Ls("About to create new client")
 
 	udpClient := pb.NewProxyClient(cc)
@@ -283,6 +284,7 @@ func handleUDPProxy() {
 		g.Ml.La("Error reaching uproxy gRPC", err)
 		time.Sleep(10 * time.Second) //nolint:mnd
 	}
+
 	g.Ml.La("Got a gRPC client", udpClient)
 	stream, err := udpClient.SendMsgs(context.Background())
 	g.Ml.La("Got here got a stream", stream, err)

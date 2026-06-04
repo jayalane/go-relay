@@ -1,5 +1,5 @@
 
-GO_CMD = gofumpt -w . && go fmt ./... && go generate ./... && golint ./... && go vet ./... && govulncheck ./... && staticcheck ./... && go build ./... && golangci-lint run --timeout 3m --enable-all --disable gomnd,lll,rowserrcheck,sqlclosecheck,wastedassign,wrapcheck,gomoddirectives,testpackage,gochecknoglobals,paralleltest,exhaustruct,varnamelen,forbidigo,funlen,ireturn,depguard,nolintlint -e .*G114.* --out-format line-number --path-prefix `pwd` ./...
+GO_CMD = gofumpt -w . && go fmt ./... && go generate ./... && golint ./... && go vet ./... && govulncheck ./... && staticcheck -checks 'all -SA1019' ./... && go build ./... && golangci-lint run --timeout 3m --enable-all --disable tenv,lll,rowserrcheck,sqlclosecheck,wastedassign,wrapcheck,gomoddirectives,testpackage,gochecknoglobals,paralleltest,exhaustruct,varnamelen,forbidigo,funlen,ireturn,depguard,nolintlint -e .*G114.* --out-format line-number --path-prefix `pwd` ./...
 
 GO_FILES = $(shell find ./ -name .git -prune -o -name \*.go )
 all: all_mod ${GO_FILES}

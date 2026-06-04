@@ -470,6 +470,7 @@ func (c *tcpConn) inWriteLoop() {
 
 				pos += theLen
 			}
+
 			count.IncrDelta("write-in-len", int64(total))
 			count.IncrDelta("write-in-len-"+c.remoteHost+":"+c.remotePort, int64(total))
 			count.Incr("write-in-ok")
@@ -532,6 +533,7 @@ func (c *tcpConn) outWriteLoop() {
 
 				pos += n
 			}
+
 			count.IncrDelta("write-out-len", int64(total))
 			count.IncrDelta("write-out-len-"+c.remoteHost+":"+c.remotePort, int64(total))
 			count.Incr("write-out-ok")
@@ -690,7 +692,8 @@ func (c *tcpConn) outReadLoop() {
 			continue
 		}
 
-		g.Ml.Ln("Got data out",
+		g.Ml.Ln(
+			"Got data out",
 			n,
 			string(buffer[0:n]),
 		)
@@ -874,7 +877,8 @@ func (c *tcpConn) run() { //nolint:gocognit,cyclop
 		_ = c.outConn.SetLinger(five)
 		_ = c.outConn.SetNoDelay(true)
 		c.state = up
-		g.Ml.La("Handling a direct connection",
+		g.Ml.La(
+			"Handling a direct connection",
 			c.inConn.RemoteAddr(),
 			c.outConn.RemoteAddr(),
 		)
